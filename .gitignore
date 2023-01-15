@@ -1,0 +1,6 @@
+# Temporary files/folders have _ prefix
+_*
+# VS2022
+build
+out
+.vs
