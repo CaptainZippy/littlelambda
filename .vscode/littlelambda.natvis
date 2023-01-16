@@ -3,7 +3,8 @@
 <Type Name="lam_obj">
   <DisplayString Condition="type==2">Symbol={(char*)(((lam_sym*)this)+1)}</DisplayString>
   <DisplayString Condition="type==3">List size={((lam_list*)this)-&gt;len}</DisplayString>
-  <DisplayString Condition="type==4 || type==5">Callable {((lam_func*)this)-&gt;name}</DisplayString>
+  <DisplayString Condition="type==4">Lambda</DisplayString>
+  <DisplayString Condition="type==5 || type==6">Callable {((lam_func*)this)-&gt;name}</DisplayString>
   <DisplayString>[TODO] type={type}</DisplayString>
   <Expand>
     <ArrayItems Condition="type==3">

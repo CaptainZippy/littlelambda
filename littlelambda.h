@@ -3,10 +3,11 @@
 // #include "../littlegc/littlegc.h"
 #include <cassert>
 
-enum class lam_type { Double, Int, Symbol, List, Builtin, Special };
+enum class lam_type { Double, Int, Symbol, List, Lambda, Builtin, Special };
 
 struct lam_obj;
-struct lam_vm_t;
+struct lam_env;
+
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
 
@@ -49,7 +50,7 @@ union lam_value {
     }
 };
 
-using lam_builtin = lam_value(lam_vm_t* vm, lam_value* a, size_t n);
+using lam_builtin = lam_value(lam_env* env, lam_value* a, size_t n);
 
 struct lam_list : lam_obj {
     lam_u64 len;
@@ -62,9 +63,12 @@ struct lam_list : lam_obj {
 };
 
 struct lam_func : lam_obj {
-    // TODO
     const char* name;
     lam_builtin* func;
+    lam_env* env;
+    lam_value body;
+    size_t num_args;
+    char** args() { return reinterpret_cast<char**>(this + 1); }
 };
 
 struct lam_sym : lam_obj {
@@ -74,31 +78,32 @@ struct lam_sym : lam_obj {
     // char name[cap]; // variable length
 };
 
-static lam_value lam_Double(double d) {
+static inline lam_value lam_Double(double d) {
     return {.dval = d};
 }
-static lam_value lam_Int(int i) {
+static inline lam_value lam_Int(int i) {
     return {.uval = lam_u32(i) | Magic::TagInt};
 }
 lam_value lam_Sym(const char* s);
 
 template <typename... Args>
-static lam_value lam_List(Args... args) {
+static inline lam_value lam_List(Args... args) {
     lam_value values[] = {args...};
     return lam_ListN(sizeof...(Args), values);
 }
 
 lam_value lam_ListN(size_t N, const lam_value* values);
-lam_value lam_Func(lam_builtin b);
+static inline lam_value lam_Object(lam_obj* p) {
+    return {.uval = lam_u64(p) | Magic::TagObj};
+}
 
-struct lam_env_t {
-    virtual ~lam_env_t() = 0;
+struct lam_env {
+    virtual ~lam_env() = 0;
     virtual lam_value lookup(const char* sym) = 0;
+    virtual void insert(const char* sym, lam_value) = 0;
+
+    static lam_env* builtin();
 };
 
-struct lam_vm_t {
-    lam_env_t* env;
-};
-
-void lam_init(lam_vm_t* vm);
-lam_value lam_eval(lam_vm_t* vm, lam_value val);
+void lam_init(lam_env* env);
+lam_value lam_eval(lam_env* env, lam_value val);
