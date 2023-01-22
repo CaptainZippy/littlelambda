@@ -25,7 +25,7 @@ lam_value lam_ListN(size_t len, const lam_value* values) {
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
-lam_value lam_Func(const char* name, lam_builtin b) {
+lam_value lam_Builtin(const char* name, lam_builtin b) {
     auto* d = reinterpret_cast<lam_func*>(malloc(sizeof(lam_func)));
     d->type = lam_type::Builtin;
     d->name = name;
@@ -53,8 +53,8 @@ struct lam_env_1 : lam_env {
     }
 
     void add_value(const char* name, lam_value val) { _map.emplace(name, val); }
-    void add_func(const char* name, lam_builtin b) {
-        _map.emplace(name, lam_Func(name, b));
+    void add_builtin(const char* name, lam_builtin b) {
+        _map.emplace(name, lam_Builtin(name, b));
     }
     void add_special(const char* name, lam_builtin b) {
         auto* d = reinterpret_cast<lam_func*>(malloc(sizeof(lam_func)));
@@ -80,24 +80,64 @@ struct lam_env_1 : lam_env {
         _map.emplace(sym, value);
     }
 
+    static lam_type coerce_numeric_types(lam_value& a, lam_value& b) {
+        auto at = a.type();
+        auto bt = b.type();
+        if ((at != lam_type::Double && at != lam_type::Int) ||
+            (bt != lam_type::Double && bt != lam_type::Int)) {
+            assert(false);
+        }
+        if (at == bt) {
+            return at;
+        }
+        if (at == lam_type::Double) {
+            b = lam_Double(b.as_int());
+        } else {
+            a = lam_Double(a.as_int());
+        }
+        return lam_type::Double;
+    }
+
    protected:
     std::unordered_map<std::string, lam_value> _map;
     lam_env* _parent{nullptr};
 };
 
-static lam_value call_lambda(lam_env* env, lam_value* args, size_t n) {
-    return lam_Double(11);
-}
-
 lam_env* lam_env::builtin() {
     lam_env_1* ret = new lam_env_1();
     ret->add_special("define", [](lam_env* env, auto a, auto n) {
         assert(n == 2);
-        assert(a[0].type() == lam_type::Symbol);
-        auto sym = reinterpret_cast<lam_sym*>(a[0].uval & ~Magic::Mask);
-        auto r = lam_eval(env, a[1]);
-        env->insert(sym->val(), r);
-        return r;
+        if (a[0].type() == lam_type::Symbol) {
+            auto sym = reinterpret_cast<lam_sym*>(a[0].uval & ~Magic::Mask);
+            auto r = lam_eval(env, a[1]);
+            env->insert(sym->val(), r);
+            return r;
+        } else if (a[0].type() == lam_type::List) {
+            auto args = reinterpret_cast<lam_list*>(a[0].uval & ~Magic::Mask);
+            auto func = (lam_func*)malloc(
+                sizeof(lam_func) +
+                (args->len - 1) * sizeof(char*));  // TODO intern names
+            const char* name = args->at(0).as_sym()->val();
+            func->type = lam_type::Lambda;
+            func->func = nullptr;
+            func->name = name;
+            func->env = env;
+            func->body = a[1];
+            func->num_args = args->len - 1;
+            char** names = func->args();
+            for (int i = 1; i < args->len; ++i) {
+                assert(args->at(i).type() == lam_type::Symbol);
+                auto sym =
+                    reinterpret_cast<lam_sym*>(args->at(i).uval & ~Magic::Mask);
+                names[i - 1] = const_cast<char*>(sym->val());
+            }
+            lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
+            env->insert(name, y);
+            return y;
+        } else {
+            assert(false);
+        }
+        return lam_value{};
     });
 
     ret->add_special("lambda", [](lam_env* env, auto a, auto n) {
@@ -107,7 +147,7 @@ lam_env* lam_env::builtin() {
         auto func = (lam_func*)malloc(
             sizeof(lam_func) + args->len * sizeof(char*));  // TODO intern names
         func->type = lam_type::Lambda;
-        func->func = call_lambda;
+        func->func = nullptr;
         func->name = "lambda";
         func->env = env;
         func->body = a[1];
@@ -129,40 +169,71 @@ lam_env* lam_env::builtin() {
         auto cond = lam_eval(env, a[0]);
         if (cond.as_int() != 0) {
             return lam_eval(env, a[1]);
-        } else if (n == 2) {
+        } else if (n == 3) {
             return lam_eval(env, a[2]);
         } else {
+            assert(false);
             return lam_Double(0);
         }
     });
     // add_special("quote",
-    ret->add_func("begin", [](lam_env* env, auto a, auto n) {
+    ret->add_builtin("begin", [](lam_env* env, auto a, auto n) {
         assert(n >= 1);
         return a[n - 1];
     });
-    ret->add_func("*", [](lam_env* env, auto a, auto n) {
+    ret->add_builtin("*", [](lam_env* env, auto a, auto n) {
         assert(n == 2);
-        assert(a[0].type() == lam_type::Double);  // TODO
-        assert(a[1].type() == lam_type::Double);
-        return lam_Double(a[0].dval * a[1].dval);
+        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+            case lam_type::Double:
+                return lam_Double(a[0].dval * a[1].dval);
+            case lam_type::Int:
+                return lam_Int(a[0].as_int() * a[1].as_int());
+            default:
+                assert(false);
+                return lam_value{};
+        }
     });
-    ret->add_func("+", [](lam_env* env, auto a, auto n) {
+    ret->add_builtin("+", [](lam_env* env, auto a, auto n) {
         assert(n == 2);
-        assert(a[0].type() == lam_type::Double);  // TODO
-        assert(a[1].type() == lam_type::Double);
-        return lam_Double(a[0].dval + a[1].dval);
+        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+            case lam_type::Double:
+                return lam_Double(a[0].dval + a[1].dval);
+            case lam_type::Int:
+                return lam_Int(a[0].as_int() + a[1].as_int());
+            default:
+                assert(false);
+                return lam_value{};
+        }
     });
-    ret->add_func("-", [](lam_env* env, auto a, auto n) {
+    ret->add_builtin("-", [](lam_env* env, auto a, auto n) {
         assert(n == 2);
-        assert(a[0].type() == lam_type::Double);  // TODO
-        assert(a[1].type() == lam_type::Double);
-        return lam_Double(a[0].dval - a[1].dval);
+        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+            case lam_type::Double:
+                return lam_Double(a[0].dval - a[1].dval);
+            case lam_type::Int:
+                return lam_Int(a[0].as_int() - a[1].as_int());
+            default:
+                assert(false);
+                return lam_value{};
+        }
     });
-    ret->add_func("/", [](lam_env* env, auto a, auto n) {
+    ret->add_builtin("/", [](lam_env* env, auto a, auto n) {
         assert(n == 2);
         assert(a[0].type() == lam_type::Double);  // TODO
         assert(a[1].type() == lam_type::Double);
         return lam_Double(a[0].dval / a[1].dval);
+    });
+    ret->add_builtin("<=", [](lam_env* env, auto a, auto n) {
+        assert(n == 2);
+        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+            case lam_type::Double:
+                return lam_Int(a[0].dval <= a[1].dval);
+            case lam_type::Int:
+                return lam_Int(a[0].as_int() <= a[1].as_int());
+            default:
+                assert(false);
+                return lam_value{};
+        }
     });
     ret->add_value("pi", lam_Double(3.14159));
     return ret;

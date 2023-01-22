@@ -5,8 +5,9 @@
 
 enum class lam_type { Double, Int, Symbol, List, Lambda, Builtin, Special };
 
-struct lam_obj;
 struct lam_env;
+struct lam_obj;
+struct lam_sym;
 
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
@@ -15,7 +16,7 @@ enum Magic : lam_u64 {
     Mask = 0x7fff0000'00000000,    // 1111
     TagObj = 0x7fff0000'00000000,  // 1111
     TagInt = 0x7ffd0000'00000000,  // 1101
-    Prefix = 0x7ffc0000'00000000,  // 11..
+    Prefix = 0x7ffc0000'00000000,  // 11.. NaN=1000, prefix means special NaN
 };
 
 struct lam_obj {
@@ -34,6 +35,12 @@ union lam_value {
     double as_double() const {
         assert((uval & Magic::Prefix) != Magic::Prefix);
         return int(unsigned(uval));
+    }
+    lam_sym* as_sym() const {
+        assert((uval & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert(obj->type == lam_type::Symbol);
+        return reinterpret_cast<lam_sym*>(obj);
     }
 
     lam_type type() const {
