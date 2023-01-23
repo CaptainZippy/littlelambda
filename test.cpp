@@ -58,7 +58,7 @@ int main() {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
-            "   (fact 5))");
+            "   (fact 10))");
 
         lam_env* env = lam_env::builtin();
         lam_value obj = lam_eval(env, expr);

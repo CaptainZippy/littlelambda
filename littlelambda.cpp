@@ -37,6 +37,10 @@ lam_value lam_parse(const char* input) {
                 auto l = lam_ListN(curList->size(), curList->data());
                 stack.pop_back();
                 if (stack.empty()) {
+                    while (is_white(*cur)) {
+                        ++cur;
+                    }
+                    assert(*cur == '\0');
                     return l;
                 }
                 curList = &stack.back();
