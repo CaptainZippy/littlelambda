@@ -28,14 +28,17 @@ struct lam_obj {
 union lam_value {
     lam_u64 uval;
     double dval;
+
     int as_int() const {
         assert((uval & Magic::Mask) == TagInt);
         return int(unsigned(uval));
     }
+
     double as_double() const {
         assert((uval & Magic::Prefix) != Magic::Prefix);
         return int(unsigned(uval));
     }
+
     lam_sym* as_sym() const {
         assert((uval & Magic::Mask) == Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
@@ -75,6 +78,7 @@ struct lam_func : lam_obj {
     lam_env* env;
     lam_value body;
     size_t num_args;
+    // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
 
@@ -91,7 +95,7 @@ static inline lam_value lam_Double(double d) {
 static inline lam_value lam_Int(int i) {
     return {.uval = lam_u32(i) | Magic::TagInt};
 }
-lam_value lam_Sym(const char* s);
+lam_value lam_Sym(const char* s, size_t n = size_t(-1));
 
 template <typename... Args>
 static inline lam_value lam_List(Args... args) {
@@ -114,3 +118,4 @@ struct lam_env {
 
 void lam_init(lam_env* env);
 lam_value lam_eval(lam_env* env, lam_value val);
+lam_value lam_parse(const char* input);

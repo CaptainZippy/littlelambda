@@ -5,13 +5,87 @@
 #include <unordered_map>
 #include <vector>
 
-lam_value lam_Sym(const char* s) {
-    lam_u64 len = strlen(s);
+static bool is_white(char c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+static bool is_word_boundary(char c) {
+    return is_white(c) || c == '(' || c == ')' || c == '\0';
+}
+
+lam_value lam_parse(const char* input) {
+    std::vector<std::vector<lam_value>> stack;
+    std::vector<lam_value>* curList{};
+    for (const char* cur = input; *cur;) {
+        const char* start = cur;
+        switch (*cur++) {
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n': {
+                while( is_white(*cur)) {
+                    ++cur;
+                }
+                break;
+            }
+
+            case '(': {
+                stack.emplace_back();
+                curList = &stack.back();
+                break;
+            }
+            case ')': {
+                auto l = lam_ListN(curList->size(), curList->data());
+                stack.pop_back();
+                if (stack.empty()) {
+                    return l;
+                }
+                curList = &stack.back();
+                curList->push_back(l);
+                break;
+            }
+
+            default: {
+                while( !is_word_boundary(*cur) ) {
+                    ++cur;
+                }
+                const char* end = cur;
+                lam_value val{};
+                do
+                {
+                    char* endparse;
+                    long asInt = strtol(start, &endparse, 10);
+                    if (endparse == end) {
+                        val = lam_Int(asInt);
+                        break;
+                    }
+                    double asDbl = strtold(start, &endparse);
+                    if (endparse == end) {
+                        val = lam_Double(asDbl);
+                        break;
+                    }
+                    val = lam_Sym(start, end - start);
+                } while (false);
+
+                if (curList) {
+                    curList->push_back(val);
+                } else {
+                    return val;
+                }
+                break;
+            }
+        }
+    }
+    return {};
+}
+
+lam_value lam_Sym(const char* s, size_t n) {
+    size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = reinterpret_cast<lam_sym*>(malloc(sizeof(lam_sym) + len + 1));
     d->type = lam_type::Symbol;
     d->len = len;
     d->cap = len;
-    memcpy(d + 1, s, len + 1);
+    memcpy(d + 1, s, len);
+    reinterpret_cast<char*>(d + 1)[len] = 0;
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
@@ -111,7 +185,6 @@ lam_env* lam_env::builtin() {
             auto sym = reinterpret_cast<lam_sym*>(a[0].uval & ~Magic::Mask);
             auto r = lam_eval(env, a[1]);
             env->insert(sym->val(), r);
-            return r;
         } else if (a[0].type() == lam_type::List) {
             auto args = reinterpret_cast<lam_list*>(a[0].uval & ~Magic::Mask);
             auto func = (lam_func*)malloc(
@@ -133,7 +206,6 @@ lam_env* lam_env::builtin() {
             }
             lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
             env->insert(name, y);
-            return y;
         } else {
             assert(false);
         }
