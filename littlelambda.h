@@ -29,7 +29,7 @@ union lam_value {
     lam_u64 uval;
     double dval;
 
-    int as_int() const {
+    constexpr int as_int() const {
         assert((uval & Magic::Mask) == TagInt);
         return int(unsigned(uval));
     }
@@ -104,9 +104,6 @@ static inline lam_value lam_List(Args... args) {
 }
 
 lam_value lam_ListN(size_t N, const lam_value* values);
-static inline lam_value lam_Object(lam_obj* p) {
-    return {.uval = lam_u64(p) | Magic::TagObj};
-}
 
 struct lam_env {
     virtual ~lam_env() = 0;

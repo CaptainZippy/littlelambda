@@ -355,9 +355,10 @@ lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
                     bits[i - 1] = lam_eval(env, list->at(i));
                 }
                 assert(bits.size() == func->num_args);
-                lam_env_1 inner(func->num_args, (const char**)func->args(),
-                                bits.data(), env);
-                return lam_eval(&inner, func->body);
+                lam_env_1* inner = new lam_env_1(
+                    func->num_args, (const char**)func->args(),
+                    bits.data(), func->env);
+                return lam_eval(inner, func->body);
             } else {
                 assert(0);
                 return {};
