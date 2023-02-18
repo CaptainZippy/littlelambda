@@ -49,11 +49,15 @@ int main() {
             "(begin"
             "   (define (twice x) (* 2 x))"
             "   (define repeat (lambda (f) (lambda (x) (f (f x)))))"
-            "   ((repeat twice) 12)"
+            "   ((repeat twice) 10)"
             ")");
         lam_env* env = lam_env::builtin();
         lam_value obj = lam_eval(env, expr);
-        assert(obj.as_int() == 48);
+        assert(obj.as_int() == 40);
+
+        expr = lam_parse("((repeat (repeat twice)) 10)");
+        obj = lam_eval(env, expr);
+        assert(obj.as_int() == 160);
     }
 
     return 0;
