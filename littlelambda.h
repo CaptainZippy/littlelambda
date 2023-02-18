@@ -3,7 +3,17 @@
 // #include "../littlegc/littlegc.h"
 #include <cassert>
 
-enum class lam_type { Double, Int, Symbol, List, Lambda, Builtin, Special };
+enum class lam_type {
+    /*inline values*/
+    Double,
+    Int,
+    /*heap objects*/
+    Symbol,
+    List,
+    Lambda,
+    Builtin,
+    Special
+};
 
 struct lam_env;
 struct lam_obj;
@@ -13,10 +23,13 @@ using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
 
 enum Magic : lam_u64 {
+    // Anything other than 7ff8.... means the value is a non-nan double
+    NormalNan = 0x7ff80000'00000000,  // 1000 - 'Normal' NaN prefix
+    TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values
+
     Mask = 0x7fff0000'00000000,    // 1111
-    TagObj = 0x7fff0000'00000000,  // 1111
-    TagInt = 0x7ffd0000'00000000,  // 1101
-    Prefix = 0x7ffc0000'00000000,  // 11.. NaN=1000, prefix means special NaN
+    TagObj = 0x7ffd0000'00000000,  // 1100 + 48 bit pointer to lam_obj
+    TagInt = 0x7ffc0000'00000000,  // 1101 + 32 bit value
 };
 
 struct lam_obj {
@@ -35,7 +48,7 @@ union lam_value {
     }
 
     double as_double() const {
-        assert((uval & Magic::Prefix) != Magic::Prefix);
+        assert((uval & Magic::TaggedNan) != Magic::TaggedNan);
         return int(unsigned(uval));
     }
 
