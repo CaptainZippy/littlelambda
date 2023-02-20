@@ -79,6 +79,9 @@ struct lam_list : lam_obj {
     lam_u64 len;
     lam_u64 cap;
     // lam_value values[cap]; // variable length
+    lam_value* first() { 
+        return reinterpret_cast<lam_value*>(this + 1);
+    }
     lam_value at(size_t i) {
         assert(i < len);
         return reinterpret_cast<lam_value*>(this + 1)[i];

@@ -21,7 +21,7 @@ int main() {
 
     if (0) {
         lam_value expr = lam_parse(
-            "(begin (define (circle-area r) (* pi (* r r)))) (circle-area 3))");
+            "(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))" );
 
         lam_env* env = lam_env::builtin();
         lam_value obj = lam_eval(env, expr);
@@ -33,7 +33,7 @@ int main() {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
-            "   (fact 100))");
+            "   (fact 5))");
 
         lam_env* env = lam_env::builtin();
         for (int i = 0; i < 10000; ++i) {
