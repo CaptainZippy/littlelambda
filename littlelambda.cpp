@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#pragma warning (disable:6011)
+#pragma warning(disable : 6011)
 
 static bool is_white(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
@@ -24,7 +24,7 @@ lam_value lam_parse(const char* input) {
             case '\t':
             case '\r':
             case '\n': {
-                while( is_white(*cur)) {
+                while (is_white(*cur)) {
                     ++cur;
                 }
                 break;
@@ -51,13 +51,12 @@ lam_value lam_parse(const char* input) {
             }
 
             default: {
-                while( !is_word_boundary(*cur) ) {
+                while (!is_word_boundary(*cur)) {
                     ++cur;
                 }
                 const char* end = cur;
                 lam_value val{};
-                do
-                {
+                do {
                     char* endparse;
                     long asInt = strtol(start, &endparse, 10);
                     if (endparse == end) {
@@ -123,21 +122,20 @@ struct lam_env_1 : lam_env {
     }
 
     void add_value(const char* name, lam_value val) { _map.emplace(name, val); }
-    void add_builtin(const char* name, lam_builtin b) {
+    void add_applicative(const char* name, lam_builtin b) {
         auto* d = reinterpret_cast<lam_func*>(malloc(sizeof(lam_func)));
-        d->type = lam_type::Builtin;
+        d->type = lam_type::Applicative;
         d->name = name;
         d->func = b;
         d->env = nullptr;
         d->body = {};
-		d->num_args = 0;
+        d->num_args = 0;
         lam_value v{.uval = lam_u64(d) | Magic::TagObj};
         _map.emplace(name, v);
-        
     }
-    void add_special(const char* name, lam_builtin b) {
+    void add_operative(const char* name, lam_builtin b) {
         auto* d = reinterpret_cast<lam_func*>(malloc(sizeof(lam_func)));
-        d->type = lam_type::Special;
+        d->type = lam_type::Operative;
         d->name = name;
         d->func = b;
         d->env = nullptr;
@@ -185,10 +183,17 @@ struct lam_env_1 : lam_env {
     std::unordered_map<std::string, lam_value> _map;
     lam_env* _parent{nullptr};
 };
+static lam_value lam_calllambda(lam_env* env, lam_value* args, auto narg) {
+    auto func = args[0].as_func();
+    assert(func->num_args == narg - 1);
+    lam_env_1* inner = inner = new lam_env_1(
+        func->num_args, (const char**)func->args(), args+1, func->env);
+    return lam_eval(inner, func->body);
+}
 
 lam_env* lam_env::builtin() {
     lam_env_1* ret = new lam_env_1();
-    ret->add_special("define", [](lam_env* env, auto a, auto n) {
+    ret->add_operative("define", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         auto lhs = a[1];
         auto rhs = a[2];
@@ -202,8 +207,8 @@ lam_env* lam_env::builtin() {
                 sizeof(lam_func) +
                 (args->len - 1) * sizeof(char*));  // TODO intern names
             const char* name = args->at(0).as_sym()->val();
-            func->type = lam_type::Lambda;
-            func->func = nullptr;
+            func->type = lam_type::Applicative;
+            func->func = &lam_calllambda;
             func->name = name;
             func->env = env;
             func->body = rhs;
@@ -223,7 +228,7 @@ lam_env* lam_env::builtin() {
         return lam_value{};
     });
 
-    ret->add_special("lambda", [](lam_env* env, auto a, auto n) {
+    ret->add_operative("lambda", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         auto lhs = a[1];
         auto rhs = a[2];
@@ -231,8 +236,8 @@ lam_env* lam_env::builtin() {
         auto args = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
         auto func = (lam_func*)malloc(
             sizeof(lam_func) + args->len * sizeof(char*));  // TODO intern names
-        func->type = lam_type::Lambda;
-        func->func = nullptr;
+        func->type = lam_type::Applicative;
+        func->func = &lam_calllambda;
         func->name = "lambda";
         func->env = env;
         func->body = rhs;
@@ -248,7 +253,7 @@ lam_env* lam_env::builtin() {
         return y;
     });
 
-    ret->add_special("if", [](lam_env* env, auto a, auto n) {
+    ret->add_operative("if", [](lam_env* env, auto a, auto n) {
         assert(n >= 3);
         assert(n <= 4);
         auto cond = lam_eval(env, a[1]);
@@ -262,11 +267,11 @@ lam_env* lam_env::builtin() {
         }
     });
     // add_special("quote",
-    ret->add_builtin("begin", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("begin", [](lam_env* env, auto a, auto n) {
         assert(n >= 2);
         return a[n - 1];
     });
-    ret->add_builtin("*", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("*", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         switch (lam_env_1::coerce_numeric_types(a[1], a[2])) {
             case lam_type::Double:
@@ -278,7 +283,7 @@ lam_env* lam_env::builtin() {
                 return lam_value{};
         }
     });
-    ret->add_builtin("+", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("+", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         switch (lam_env_1::coerce_numeric_types(a[1], a[2])) {
             case lam_type::Double:
@@ -290,7 +295,7 @@ lam_env* lam_env::builtin() {
                 return lam_value{};
         }
     });
-    ret->add_builtin("-", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("-", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         switch (lam_env_1::coerce_numeric_types(a[1], a[2])) {
             case lam_type::Double:
@@ -302,13 +307,13 @@ lam_env* lam_env::builtin() {
                 return lam_value{};
         }
     });
-    ret->add_builtin("/", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("/", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         assert(a[1].type() == lam_type::Double);  // TODO
         assert(a[2].type() == lam_type::Double);
         return lam_Double(a[1].dval / a[2].dval);
     });
-    ret->add_builtin("<=", [](lam_env* env, auto a, auto n) {
+    ret->add_applicative("<=", [](lam_env* env, auto a, auto n) {
         assert(n == 3);
         switch (lam_env_1::coerce_numeric_types(a[1], a[2])) {
             case lam_type::Double:
@@ -341,35 +346,22 @@ lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
         }
         case lam_type::List: {
             auto list = static_cast<lam_list*>(obj);
+            assert(list->len);
             lam_value head = lam_eval(env, list->at(0));
-            lam_func* func =
+            lam_func* callable =
                 reinterpret_cast<lam_func*>(head.uval & ~Magic::Mask);
 
-            if (func->type == lam_type::Special) {
-                auto list = static_cast<lam_list*>(obj);
-                auto values = reinterpret_cast<lam_value*>(list + 1);
-                return lam_call(env, func->func,
-                                {values, values + list->len});
-            } else if (func->type == lam_type::Builtin) {
-                std::vector<lam_value> bits;
-                bits.resize(list->len);
-				bits[0] = head;
+            if (callable->type == lam_type::Operative) {
+                // unevaluated head?
+                return callable->func(env, list->first(), list->len);
+            } else if (callable->type == lam_type::Applicative) {
+                std::vector<lam_value> args;
+                args.resize(list->len);
+                args[0] = head;
                 for (unsigned i = 1; i < list->len; ++i) {
-                    bits[i] = lam_eval(env, list->at(i));
+                    args[i] = lam_eval(env, list->at(i));
                 }
-                return lam_call(env, func->func, bits);
-            } else if (func->type == lam_type::Lambda) {
-                std::vector<lam_value> bits;
-                bits.resize(list->len);
-				bits[0] = head;
-                for (unsigned i = 1; i < list->len; ++i) {
-                    bits[i] = lam_eval(env, list->at(i));
-                }
-                assert(bits.size() == func->num_args + 1);
-                lam_env_1* inner = new lam_env_1(
-                    func->num_args, (const char**)func->args(),
-                    bits.data()+1, func->env);
-                return lam_eval(inner, func->body);
+                return callable->func(env, args.data(), args.size());
             } else {
                 assert(0);
                 return {};

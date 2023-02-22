@@ -10,14 +10,14 @@ enum class lam_type {
     /*heap objects*/
     Symbol,
     List,
-    Lambda,
-    Builtin,
-    Special
+    Applicative,
+    Operative,
 };
 
 struct lam_env;
 struct lam_obj;
 struct lam_sym;
+struct lam_func;
 
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
@@ -57,6 +57,13 @@ union lam_value {
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Symbol);
         return reinterpret_cast<lam_sym*>(obj);
+    }
+
+    lam_func* as_func() const {
+        assert((uval & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert(obj->type == lam_type::Applicative ||obj->type == lam_type::Operative);
+        return reinterpret_cast<lam_func*>(obj);
     }
 
     lam_type type() const {

@@ -3,7 +3,7 @@
 #include "littlelambda.h"
 
 int main() {
-    if (0) {
+    if(1) {
         lam_parse("hello");
         lam_parse("12");
         lam_parse("12.2");
@@ -12,14 +12,14 @@ int main() {
         lam_parse("(begin (define r 10) (* pi (* r r)))");
     }
 
-    if (0) {
+    if(1) {
         lam_value expr = lam_parse("(begin (define r 10) (* pi (* r r)))");
         lam_env* env = lam_env::builtin();
         lam_value obj = lam_eval(env, expr);
         assert(obj.dval > 314);
     }
 
-    if (0) {
+    if(1) {
         lam_value expr = lam_parse(
             "(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))" );
 
@@ -29,7 +29,7 @@ int main() {
         assert(obj.dval < 9 * 3.2);
     }
 
-    if (0) {
+    if(1) {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
