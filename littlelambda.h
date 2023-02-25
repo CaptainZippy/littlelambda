@@ -110,7 +110,8 @@ struct lam_callable : lam_obj {
     lam_invoke* invoke;
     lam_env* env;
     lam_value body;
-    size_t num_args;
+    size_t num_args; // not including variadic
+    const char* variadic; // if not null, bind extra arguments to this
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
