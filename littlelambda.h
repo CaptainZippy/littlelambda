@@ -1,7 +1,11 @@
 #pragma once
 
 // #include "../littlegc/littlegc.h"
-#include <cassert>
+// #include <cassert>
+#define assert(COND)    \
+    if (!(COND)) {      \
+        __debugbreak(); \
+    }
 
 enum class lam_type {
     /*inline values*/
@@ -63,7 +67,7 @@ union lam_value {
     lam_callable* as_func() const {
         assert((uval & Magic::Mask) == Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
-        assert(obj->type == lam_type::Applicative ||obj->type == lam_type::Operative);
+        assert(obj->type == lam_type::Applicative || obj->type == lam_type::Operative);
         return reinterpret_cast<lam_callable*>(obj);
     }
 
@@ -94,9 +98,7 @@ struct lam_list : lam_obj {
     lam_u64 len;
     lam_u64 cap;
     // lam_value values[cap]; // variable length
-    lam_value* first() { 
-        return reinterpret_cast<lam_value*>(this + 1);
-    }
+    lam_value* first() { return reinterpret_cast<lam_value*>(this + 1); }
     lam_value at(size_t i) {
         assert(i < len);
         return reinterpret_cast<lam_value*>(this + 1)[i];

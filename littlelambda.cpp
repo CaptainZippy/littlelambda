@@ -1,5 +1,4 @@
 #include "littlelambda.h"
-#include <cassert>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -12,6 +11,12 @@ static bool is_white(char c) {
 }
 static bool is_word_boundary(char c) {
     return is_white(c) || c == '(' || c == ')' || c == '\0';
+}
+
+template<typename T>
+static T* callocPlus(size_t extra) {
+    void* p = calloc(1, sizeof(T) + extra);
+    return reinterpret_cast<T*>(p);
 }
 
 lam_value lam_parse(const char* input) {
@@ -85,7 +90,7 @@ lam_value lam_parse(const char* input) {
 
 lam_value lam_Sym(const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
-    auto* d = reinterpret_cast<lam_sym*>(malloc(sizeof(lam_sym) + len + 1));
+    auto* d = callocPlus<lam_sym>(len + 1);
     d->type = lam_type::Symbol;
     d->len = len;
     d->cap = len;
@@ -95,7 +100,7 @@ lam_value lam_Sym(const char* s, size_t n) {
 }
 
 lam_value lam_ListN(size_t len, const lam_value* values) {
-    auto* d = reinterpret_cast<lam_list*>(malloc(sizeof(lam_list) + len * sizeof(lam_value)));
+    auto* d = callocPlus<lam_list>(len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
     d->cap = len;
@@ -119,7 +124,7 @@ struct lam_env_1 : lam_env {
 
     void add_value(const char* name, lam_value val) { _map.emplace(name, val); }
     void add_applicative(const char* name, lam_invoke b) {
-        auto* d = reinterpret_cast<lam_callable*>(malloc(sizeof(lam_callable)));
+        auto* d = callocPlus<lam_callable>(0);
         d->type = lam_type::Applicative;
         d->name = name;
         d->invoke = b;
@@ -130,7 +135,7 @@ struct lam_env_1 : lam_env {
         _map.emplace(name, v);
     }
     void add_operative(const char* name, lam_invoke b) {
-        auto* d = reinterpret_cast<lam_callable*>(malloc(sizeof(lam_callable)));
+        auto* d = callocPlus<lam_callable>(0);
         d->type = lam_type::Operative;
         d->name = name;
         d->invoke = b;
@@ -241,8 +246,7 @@ lam_env* lam_env::builtin() {
             env->insert(sym->val(), r);
         } else if (lhs.type() == lam_type::List) {
             auto args = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
-            auto func = (lam_callable*)malloc(
-                sizeof(lam_callable) + (args->len - 1) * sizeof(char*));  // TODO intern names
+            auto func = callocPlus<lam_callable>((args->len - 1) * sizeof(char*));  // TODO intern names
             const char* name = args->at(0).as_sym()->val();
             func->type = lam_type::Applicative;
             func->invoke = &lam_invokelambda;
@@ -270,8 +274,7 @@ lam_env* lam_env::builtin() {
         auto rhs = a[1];
         assert(lhs.type() == lam_type::List);
         auto args = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
-        auto func = (lam_callable*)malloc(sizeof(lam_callable) +
-                                          args->len * sizeof(char*));  // TODO intern names
+        auto func = callocPlus<lam_callable>(args->len * sizeof(char*));  // TODO intern names
         func->type = lam_type::Applicative;
         func->invoke = &lam_invokelambda;
         func->name = "lambda";
