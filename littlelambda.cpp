@@ -122,12 +122,12 @@ struct lam_env_1 : lam_env {
               lam_env* parent,
               const char* variadic)
         : _parent(parent) {
-        assert((nvalues == nkeys) || (variadic && nvalues>=nkeys));
+        assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
         for (size_t i = 0; i < nkeys; ++i) {
             add_value(keys[i], values[i]);
         }
         if (variadic) {
-            lam_value kw = lam_ListN(nvalues-nkeys, values+nkeys);
+            lam_value kw = lam_ListN(nvalues - nkeys, values + nkeys);
             add_value(keys[nkeys - 1], kw);
         }
     }
@@ -193,8 +193,8 @@ struct lam_env_1 : lam_env {
     lam_env* _parent{nullptr};
 };
 static lam_value lam_invokelambda(lam_callable* call, lam_env* env, lam_value* args, auto narg) {
-    lam_env_1* inner = inner = new lam_env_1((const char**)call->args(), call->num_args, args,
-                                             narg, call->env, call->variadic);
+    lam_env_1* inner = inner = new lam_env_1((const char**)call->args(), call->num_args, args, narg,
+                                             call->env, call->variadic);
     return lam_eval(inner, call->body);
 }
 
@@ -256,21 +256,27 @@ lam_env* lam_env::builtin() {
             auto r = lam_eval(env, rhs);
             env->insert(sym->val(), r);
         } else if (lhs.type() == lam_type::List) {
-            auto args = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
+            auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
+            std::span<lam_value> args{argsList->first() + 1, argsList->len - 1}; // drop sym from args list
+            const char* variadic{nullptr};
+
+            if (args.size() >= 2 && args[args.size() - 2].as_sym()->val()[0] == '.') {
+                variadic = args[args.size() - 1].as_sym()->val();
+                args = args.subspan(0, args.size() - 2);
+            }
             auto func =
-                callocPlus<lam_callable>((args->len - 1) * sizeof(char*));  // TODO intern names
-            const char* name = args->at(0).as_sym()->val();
+                callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
+            const char* name = argsList->at(0).as_sym()->val();
             func->type = lam_type::Applicative;
             func->invoke = &lam_invokelambda;
             func->name = name;
             func->env = env;
             func->body = rhs;
-            func->num_args = args->len - 1;
+            func->num_args = args.size();
+            func->variadic = variadic;
             char** names = func->args();
-            for (int i = 1; i < args->len; ++i) {
-                assert(args->at(i).type() == lam_type::Symbol);
-                auto sym = reinterpret_cast<lam_sym*>(args->at(i).uval & ~Magic::Mask);
-                names[i - 1] = const_cast<char*>(sym->val());
+            for (size_t i = 0; i < args.size(); ++i ) {
+                names[i] = const_cast<char*>(args[i].as_sym()->val());
             }
             lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
             env->insert(name, y);
@@ -281,11 +287,11 @@ lam_env* lam_env::builtin() {
     });
 
     ret->add_operative("lambda", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2, "wrong number of parameters to lambda");
+        assert(n == 2 && "wrong number of parameters to lambda");
         auto lhs = a[0];
         auto rhs = a[1];
         size_t numArgs{0};
-		lam_value* argp{nullptr};
+        lam_value* argp{nullptr};
         const char* variadic{nullptr};
         if (lhs.type() == lam_type::List) {
             auto args = lhs.as_list();

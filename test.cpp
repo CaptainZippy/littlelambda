@@ -68,7 +68,8 @@ int main() {
         lam_value expr = lam_parse(
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
-            "  (define vtest (lambda args (print args)))"
+            "  (define ltest (lambda args (print args)))"
+            "  (define (vtest . args) (print args))"
             "  (vtest 1 2)"
             "  (vtest 1 2 3 5)"
             //"  (macro (curry a b) (lambda (x) (a b x)))"
