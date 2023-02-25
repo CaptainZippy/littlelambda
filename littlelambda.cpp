@@ -149,7 +149,7 @@ struct lam_env_1 : lam_env {
         if (_parent) {
             return _parent->lookup(sym);
         }
-        assert(0);
+        assert(0 && "symbol not found");
         return {};
     }
 
@@ -182,6 +182,51 @@ static lam_value lam_invokelambda(lam_callable* call, lam_env* env, lam_value* a
     lam_env_1* inner = inner =
         new lam_env_1(call->num_args, (const char**)call->args(), args, call->env);
     return lam_eval(inner, call->body);
+}
+
+static bool truthy(lam_value v) {
+    if ((v.uval & Magic::Mask) == Magic::TagInt) {
+        return unsigned(v.uval) != 0;
+    } else if ((v.uval & Magic::Mask) == Magic::TagObj) {
+        lam_obj* obj = reinterpret_cast<lam_obj*>(v.uval & ~Magic::Mask);
+        if (obj->type == lam_type::List) {
+            lam_list* list = reinterpret_cast<lam_list*>(obj);
+            return list->len != 0;
+        }
+    }
+    assert(false);
+    return false;
+}
+
+static void lam_print(lam_value val) {
+    switch (val.type()) {
+        case lam_type::Double:
+            printf("%lf", val.as_double());
+            break;
+
+        case lam_type::Int:
+            printf("%li", val.as_int());
+            break;
+        case lam_type::Symbol:
+            printf(":%s", val.as_sym()->val());
+            break;
+        case lam_type::List: {
+            printf("(");
+            auto lst = val.as_list();
+            for (auto i = 0; i < lst->len; ++i) {
+                lam_print(lst->at(i));
+                printf(" ");
+            }
+            printf(")");
+            break;
+        }
+        case lam_type::Applicative:
+            printf("A{%s}", val.as_func()->name);
+            break;
+        case lam_type::Operative:
+            printf("O{%s}", val.as_func()->name);
+            break;
+    }
 }
 
 lam_env* lam_env::builtin() {
@@ -247,7 +292,7 @@ lam_env* lam_env::builtin() {
         assert(n >= 2);
         assert(n <= 3);
         auto cond = lam_eval(env, a[0]);
-        if (cond.as_int() != 0) {
+        if (truthy(cond)) {
             return lam_eval(env, a[1]);
         } else if (n == 3) {
             return lam_eval(env, a[2]);
@@ -261,6 +306,47 @@ lam_env* lam_env::builtin() {
         assert(n >= 1);
         return a[n - 1];
     });
+
+    ret->add_applicative("print", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        for (auto i = 0; i < n; ++i) {
+            lam_print(a[i]);
+        }
+        return lam_value{};
+    });
+
+    ret->add_applicative("list", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        assert(n >= 1);
+        return lam_ListN(n, a);
+    });
+
+    ret->add_applicative("equal?", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        assert(n == 2);
+        auto l = a[0];
+        auto r = a[1];
+        if ((l.uval & Magic::Mask) != (r.uval & Magic::Mask)) {
+            return lam_Int(false);
+        } else if ((l.uval & Magic::Mask) == Magic::TagInt) {
+            return lam_Int(unsigned(l.uval) == unsigned(r.uval));
+        }
+        // TODO other types
+        assert(false);
+        return lam_value{};
+    });
+
+    ret->add_applicative("mapreduce", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        assert(n == 3);
+        lam_callable* map = a[0].as_func();
+        lam_callable* red = a[1].as_func();
+        lam_list* lst = a[2].as_list();
+        assert(lst->len >= 1);
+        lam_value acc[]{map->invoke(map, env, lst->first(), 1), {}};
+        for (size_t i = 1; i < lst->len; ++i) {
+            acc[1] = map->invoke(map, env, lst->first() + i, 1);
+            acc[0] = red->invoke(red, env, acc, 2);
+        }
+        return acc[0];
+    });
+
     ret->add_applicative("*", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
         switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {

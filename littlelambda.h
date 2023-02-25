@@ -17,6 +17,7 @@ enum class lam_type {
 struct lam_env;
 struct lam_obj;
 struct lam_sym;
+struct lam_list;
 struct lam_callable;
 
 using lam_u64 = unsigned long long;
@@ -64,6 +65,13 @@ union lam_value {
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Applicative ||obj->type == lam_type::Operative);
         return reinterpret_cast<lam_callable*>(obj);
+    }
+
+    lam_list* as_list() const {
+        assert((uval & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert(obj->type == lam_type::List);
+        return reinterpret_cast<lam_list*>(obj);
     }
 
     lam_type type() const {
