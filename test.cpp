@@ -62,6 +62,7 @@ int main() {
     if (0) {
         lam_value expr = lam_parse(
             "(define range (a b) (if (= a b) (quote()) (cons a (range(+ a 1) b))))"
+            //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
     if (1) {
@@ -70,8 +71,10 @@ int main() {
             "(begin"
             "  (define ltest (lambda args (print args)))"
             "  (define (vtest . args) (print args))"
+            "  (ltest 1 2)"
+            "  (ltest 1 (+ 2 2))"
             "  (vtest 1 2)"
-            "  (vtest 1 2 3 5)"
+            "  (vtest 1 2 (+ 3 5))"
             //"  (macro (curry a b) (lambda (x) (a b x)))"
             "  (define (count item L)"
             "    (mapreduce (lambda (x) (equal? item x))"

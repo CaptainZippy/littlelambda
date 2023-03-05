@@ -41,7 +41,7 @@ lam_value lam_parse(const char* input) {
                 break;
             }
             case ')': {
-                auto l = lam_ListN(curList->size(), curList->data());
+                auto l = lam_make_list_v(curList->size(), curList->data());
                 stack.pop_back();
                 if (stack.empty()) {
                     while (is_white(*cur)) {
@@ -65,12 +65,12 @@ lam_value lam_parse(const char* input) {
                     char* endparse;
                     long asInt = strtol(start, &endparse, 10);
                     if (endparse == end) {
-                        val = lam_Int(asInt);
+                        val = lam_make_int(asInt);
                         break;
                     }
                     double asDbl = strtold(start, &endparse);
                     if (endparse == end) {
-                        val = lam_Double(asDbl);
+                        val = lam_make_double(asDbl);
                         break;
                     }
                     val = lam_Sym(start, end - start);
@@ -99,7 +99,7 @@ lam_value lam_Sym(const char* s, size_t n) {
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
-lam_value lam_ListN(size_t len, const lam_value* values) {
+lam_value lam_make_list_v(size_t len, const lam_value* values) {
     auto* d = callocPlus<lam_list>(len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
@@ -127,7 +127,7 @@ struct lam_env_1 : lam_env {
             add_value(keys[i], values[i]);
         }
         if (variadic) {
-            lam_value kw = lam_ListN(nvalues - nkeys, values + nkeys);
+            lam_value kw = lam_make_list_v(nvalues - nkeys, values + nkeys);
             add_value(keys[nkeys - 1], kw);
         }
     }
@@ -181,9 +181,9 @@ struct lam_env_1 : lam_env {
             return at;
         }
         if (at == lam_type::Double) {
-            b = lam_Double(b.as_int());
+            b = lam_make_double(b.as_int());
         } else {
-            a = lam_Double(a.as_int());
+            a = lam_make_double(a.as_int());
         }
         return lam_type::Double;
     }
@@ -329,7 +329,7 @@ lam_env* lam_env::builtin() {
             return lam_eval(env, a[2]);
         } else {
             assert(false);
-            return lam_Double(0);
+            return lam_make_double(0);
         }
     });
     // add_special("quote",
@@ -347,7 +347,7 @@ lam_env* lam_env::builtin() {
 
     ret->add_applicative("list", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n >= 1);
-        return lam_ListN(n, a);
+        return lam_make_list_v(n, a);
     });
 
     ret->add_applicative("equal?", [](lam_callable* call, lam_env* env, auto a, auto n) {
@@ -355,9 +355,9 @@ lam_env* lam_env::builtin() {
         auto l = a[0];
         auto r = a[1];
         if ((l.uval & Magic::Mask) != (r.uval & Magic::Mask)) {
-            return lam_Int(false);
+            return lam_make_int(false);
         } else if ((l.uval & Magic::Mask) == Magic::TagInt) {
-            return lam_Int(unsigned(l.uval) == unsigned(r.uval));
+            return lam_make_int(unsigned(l.uval) == unsigned(r.uval));
         }
         // TODO other types
         assert(false);
@@ -382,9 +382,9 @@ lam_env* lam_env::builtin() {
         assert(n == 2);
         switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
-                return lam_Double(a[0].dval * a[1].dval);
+                return lam_make_double(a[0].dval * a[1].dval);
             case lam_type::Int:
-                return lam_Int(a[0].as_int() * a[1].as_int());
+                return lam_make_int(a[0].as_int() * a[1].as_int());
             default:
                 assert(false);
                 return lam_value{};
@@ -394,9 +394,9 @@ lam_env* lam_env::builtin() {
         assert(n == 2);
         switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
-                return lam_Double(a[0].dval + a[1].dval);
+                return lam_make_double(a[0].dval + a[1].dval);
             case lam_type::Int:
-                return lam_Int(a[0].as_int() + a[1].as_int());
+                return lam_make_int(a[0].as_int() + a[1].as_int());
             default:
                 assert(false);
                 return lam_value{};
@@ -406,9 +406,9 @@ lam_env* lam_env::builtin() {
         assert(n == 2);
         switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
-                return lam_Double(a[0].dval - a[1].dval);
+                return lam_make_double(a[0].dval - a[1].dval);
             case lam_type::Int:
-                return lam_Int(a[0].as_int() - a[1].as_int());
+                return lam_make_int(a[0].as_int() - a[1].as_int());
             default:
                 assert(false);
                 return lam_value{};
@@ -418,21 +418,21 @@ lam_env* lam_env::builtin() {
         assert(n == 2);
         assert(a[0].type() == lam_type::Double);  // TODO
         assert(a[1].type() == lam_type::Double);
-        return lam_Double(a[0].dval / a[1].dval);
+        return lam_make_double(a[0].dval / a[1].dval);
     });
     ret->add_applicative("<=", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
         switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
-                return lam_Int(a[0].dval <= a[1].dval);
+                return lam_make_int(a[0].dval <= a[1].dval);
             case lam_type::Int:
-                return lam_Int(a[0].as_int() <= a[1].as_int());
+                return lam_make_int(a[0].as_int() <= a[1].as_int());
             default:
                 assert(false);
                 return lam_value{};
         }
     });
-    ret->add_value("pi", lam_Double(3.14159));
+    ret->add_value("pi", lam_make_double(3.14159));
     return ret;
 }
 

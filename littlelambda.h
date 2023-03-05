@@ -54,7 +54,7 @@ union lam_value {
 
     double as_double() const {
         assert((uval & Magic::TaggedNan) != Magic::TaggedNan);
-        return int(unsigned(uval));
+        return dval;
     }
 
     lam_sym* as_sym() const {
@@ -123,21 +123,21 @@ struct lam_sym : lam_obj {
     // char name[cap]; // variable length
 };
 
-static inline lam_value lam_Double(double d) {
+static inline lam_value lam_make_double(double d) {
     return {.dval = d};
 }
-static inline lam_value lam_Int(int i) {
+static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | Magic::TagInt};
 }
 lam_value lam_Sym(const char* s, size_t n = size_t(-1));
 
 template <typename... Args>
-static inline lam_value lam_List(Args... args) {
+static inline lam_value lam_make_list_l(Args... args) {
     lam_value values[] = {args...};
-    return lam_ListN(sizeof...(Args), values);
+    return lam_make_list_v(sizeof...(Args), values);
 }
 
-lam_value lam_ListN(size_t N, const lam_value* values);
+lam_value lam_make_list_v(size_t N, const lam_value* values);
 
 struct lam_env {
     virtual ~lam_env() = 0;
