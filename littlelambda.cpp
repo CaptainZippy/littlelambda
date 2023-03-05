@@ -195,7 +195,7 @@ struct lam_env_1 : lam_env {
 static lam_value lam_invokelambda(lam_callable* call, lam_env* env, lam_value* args, auto narg) {
     lam_env_1* inner = inner = new lam_env_1((const char**)call->args(), call->num_args, args, narg,
                                              call->env, call->variadic);
-    return lam_eval(inner, call->body);
+    return lam_eval(call->body, inner);
 }
 
 static bool truthy(lam_value v) {
@@ -253,7 +253,7 @@ lam_env* lam_env::builtin() {
         auto rhs = a[1];
         if (lhs.type() == lam_type::Symbol) {
             auto sym = reinterpret_cast<lam_sym*>(lhs.uval & ~Magic::Mask);
-            auto r = lam_eval(env, rhs);
+            auto r = lam_eval(rhs, env);
             env->insert(sym->val(), r);
         } else if (lhs.type() == lam_type::List) {
             auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
@@ -322,11 +322,11 @@ lam_env* lam_env::builtin() {
     ret->add_operative("if", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n >= 2);
         assert(n <= 3);
-        auto cond = lam_eval(env, a[0]);
+        auto cond = lam_eval(a[0], env);
         if (truthy(cond)) {
-            return lam_eval(env, a[1]);
+            return lam_eval(a[1], env);
         } else if (n == 3) {
-            return lam_eval(env, a[2]);
+            return lam_eval(a[2], env);
         } else {
             assert(false);
             return lam_make_double(0);
@@ -440,7 +440,7 @@ lam_env* lam_env_builtin() {
     return lam_env_1::builtin();
 }
 
-lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
+lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
     switch (obj->type) {
         case lam_type::Symbol: {
             auto sym = static_cast<lam_sym*>(obj);
@@ -449,7 +449,7 @@ lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
         case lam_type::List: {
             auto list = static_cast<lam_list*>(obj);
             assert(list->len);
-            lam_value head = lam_eval(env, list->at(0));
+            lam_value head = lam_eval(list->at(0), env);
             lam_callable* callable = reinterpret_cast<lam_callable*>(head.uval & ~Magic::Mask);
 
             if (callable->type == lam_type::Operative) {
@@ -458,7 +458,7 @@ lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
                 std::vector<lam_value> args;
                 args.resize(list->len - 1);
                 for (unsigned i = 1; i < list->len; ++i) {
-                    args[i - 1] = lam_eval(env, list->at(i));
+                    args[i - 1] = lam_eval(list->at(i), env);
                 }
                 return callable->invoke(callable, env, args.data(), args.size());
             } else {
@@ -473,10 +473,10 @@ lam_value lam_eval_obj(lam_env* env, lam_obj* obj) {
     }
 }
 
-lam_value lam_eval(lam_env* env, lam_value val) {
+lam_value lam_eval(lam_value val, lam_env* env) {
     switch (val.uval & Magic::Mask) {
         case Magic::TagObj:
-            return lam_eval_obj(env, reinterpret_cast<lam_obj*>(val.uval & ~Magic::Mask));
+            return lam_eval_obj(reinterpret_cast<lam_obj*>(val.uval & ~Magic::Mask), env);
         case Magic::TagInt:
             return val;
         default:

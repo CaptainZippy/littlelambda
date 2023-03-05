@@ -147,6 +147,5 @@ struct lam_env {
     static lam_env* builtin();
 };
 
-void lam_init(lam_env* env);
-lam_value lam_eval(lam_env* env, lam_value val);
+lam_value lam_eval(lam_value val, lam_env* env);
 lam_value lam_parse(const char* input);

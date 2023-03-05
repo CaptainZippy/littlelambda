@@ -14,7 +14,7 @@ int main() {
     if(1) {
         lam_value expr = lam_parse("(begin (define r 10) (* pi (* r r)))");
         lam_env* env = lam_env::builtin();
-        lam_value obj = lam_eval(env, expr);
+        lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
     }
 
@@ -23,7 +23,7 @@ int main() {
             "(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))" );
 
         lam_env* env = lam_env::builtin();
-        lam_value obj = lam_eval(env, expr);
+        lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 9 * 3.1);
         assert(obj.dval < 9 * 3.2);
     }
@@ -36,7 +36,7 @@ int main() {
 
         lam_env* env = lam_env::builtin();
         for (int i = 0; i < 10000; ++i) {
-            lam_value obj = lam_eval(env, expr);
+            lam_value obj = lam_eval(expr, env);
             assert(obj.as_int() == 120);
             if (i % 100 == 0)
                 printf("%i\n", i);
@@ -51,11 +51,11 @@ int main() {
             "   ((repeat twice) 10)"
             ")");
         lam_env* env = lam_env::builtin();
-        lam_value obj = lam_eval(env, expr);
+        lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 40);
 
         expr = lam_parse("((repeat (repeat twice)) 10)");
-        obj = lam_eval(env, expr);
+        obj = lam_eval(expr, env);
         assert(obj.as_int() == 160);
     }
 
@@ -82,7 +82,7 @@ int main() {
             "             + L))"
             "  (count 0 (list 0 1 2 0 3 0 0)))");
         lam_env* env = lam_env::builtin();
-        lam_value obj = lam_eval(env, expr);
+        lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 4);
     }
 
