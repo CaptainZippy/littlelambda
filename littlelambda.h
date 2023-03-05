@@ -60,19 +60,19 @@ union lam_value {
         return dval;
     }
 
-    lam_symbol* as_symbol() const {
-        assert((uval & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
-        assert(obj->type == lam_type::Symbol);
-        return reinterpret_cast<lam_symbol*>(obj);
+    template <typename ReqType>
+    static ReqType* try_cast_obj(lam_u64 val) {
+        assert((val & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(val & ~Magic::Mask);
+        assert(obj->type == ReqType::StaticType);
+        return reinterpret_cast<ReqType*>(obj);
     }
 
-    lam_string* as_string() const {
-        assert((uval & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
-        assert(obj->type == lam_type::String);
-        return reinterpret_cast<lam_string*>(obj);
-    }
+    lam_symbol* as_symbol() const { return try_cast_obj<lam_symbol>(uval); }
+
+    lam_string* as_string() const { return try_cast_obj<lam_string>(uval); }
+
+    lam_list* as_list() const { return try_cast_obj<lam_list>(uval); }
 
     lam_callable* as_func() const {
         assert((uval & Magic::Mask) == Magic::TagObj);
@@ -86,13 +86,6 @@ union lam_value {
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Environment);
         return reinterpret_cast<lam_env*>(obj);
-    }
-
-    lam_list* as_list() const {
-        assert((uval & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
-        assert(obj->type == lam_type::List);
-        return reinterpret_cast<lam_list*>(obj);
     }
 
     lam_type type() const {
@@ -112,6 +105,7 @@ union lam_value {
 using lam_invoke = lam_value(lam_callable* callable, lam_env* env, lam_value* a, size_t n);
 
 struct lam_list : lam_obj {
+    constexpr static const lam_type StaticType = lam_type::List;
     lam_u64 len;
     lam_u64 cap;
     // lam_value values[cap]; // variable length
@@ -134,6 +128,7 @@ struct lam_callable : lam_obj {
 };
 
 struct lam_symbol : lam_obj {
+    constexpr static const lam_type StaticType = lam_type::Symbol;
     lam_u64 len;
     lam_u64 cap;
     const char* val() const { return reinterpret_cast<const char*>(this + 1); }
@@ -141,6 +136,7 @@ struct lam_symbol : lam_obj {
 };
 
 struct lam_string : lam_obj {
+    constexpr static const lam_type StaticType = lam_type::String;
     lam_u64 len;
     const char* val() const { return reinterpret_cast<const char*>(this + 1); }
     // char name[len]; char zero{0}; // variable length
