@@ -12,6 +12,7 @@ enum class lam_type {
     Double,
     Int,
     /*heap objects*/
+    String,
     Symbol,
     List,
     Applicative,
@@ -22,6 +23,7 @@ struct lam_env;
 struct lam_obj;
 struct lam_sym;
 struct lam_list;
+struct lam_string;
 struct lam_callable;
 
 using lam_u64 = unsigned long long;
@@ -62,6 +64,13 @@ union lam_value {
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Symbol);
         return reinterpret_cast<lam_sym*>(obj);
+    }
+
+    lam_string* as_string() const {
+        assert((uval & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert(obj->type == lam_type::String);
+        return reinterpret_cast<lam_string*>(obj);
     }
 
     lam_callable* as_func() const {
@@ -123,6 +132,12 @@ struct lam_sym : lam_obj {
     // char name[cap]; // variable length
 };
 
+struct lam_string : lam_obj {
+    lam_u64 len;
+    const char* val() const { return reinterpret_cast<const char*>(this + 1); }
+    // char name[len]; char zero{0}; // variable length
+};
+
 // Create values
 
 static inline lam_value lam_make_double(double d) {
@@ -132,6 +147,7 @@ static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | Magic::TagInt};
 }
 lam_value lam_make_sym(const char* s, size_t n = size_t(-1));
+lam_value lam_make_string(const char* s, size_t n = size_t(-1));
 
 template <typename... Args>
 static inline lam_value lam_make_list_l(Args... args) {

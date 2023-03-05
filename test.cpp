@@ -89,11 +89,16 @@ int main() {
     if (1) {
         lam_value expr = lam_parse(
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
-            "(begin"
-            "  (define foo (quote + 101 202))"
-            "  (print foo (eval foo))"
-            "  (eval foo)"
-            ")");
+            R"---(
+            (begin
+              (print "\n")
+              (define (test_one expr) (begin (define a 202) (eval expr)))
+              (define (test_two expr) (begin (define a 999) (eval expr)))
+              (define foo (quote + 101 a))
+              (print (test_one foo) "\n")
+              (print (test_two foo) "\n")
+              303)
+            )---");
         lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 303);

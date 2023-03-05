@@ -57,6 +57,40 @@ lam_value lam_parse(const char* input) {
                 break;
             }
 
+            case '"': {
+                const char* start = cur;
+                std::string res;
+                bool done = false;
+                while (!done) {
+                    switch (char c = *cur++) {
+                        case '0': {
+                            assert(false);
+                            break;
+                        }
+                        case '\\': {
+                            if (*cur == 'n') {
+                                res.append(start, cur - 1);
+                                res.push_back('\n');
+                                cur += 1;
+                                start = cur;
+                            } else {
+                                assert(false);
+                            }
+                            break;
+                        }
+                        case '"': {
+                            res.append(start, cur - 1);
+                            curList->push_back(lam_make_string(res.data(), res.size()));
+                            done = true;
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+                }
+                break;
+            }
+
             default: {
                 while (!is_word_boundary(*cur)) {
                     ++cur;
@@ -96,6 +130,16 @@ lam_value lam_make_sym(const char* s, size_t n) {
     d->type = lam_type::Symbol;
     d->len = len;
     d->cap = len;
+    memcpy(d + 1, s, len);
+    reinterpret_cast<char*>(d + 1)[len] = 0;
+    return {.uval = lam_u64(d) | Magic::TagObj};
+}
+
+lam_value lam_make_string(const char* s, size_t n) {
+    size_t len = n == size_t(-1) ? strlen(s) : n;
+    auto* d = callocPlus<lam_string>(len + 1);
+    d->type = lam_type::String;
+    d->len = len;
     memcpy(d + 1, s, len);
     reinterpret_cast<char*>(d + 1)[len] = 0;
     return {.uval = lam_u64(d) | Magic::TagObj};
@@ -170,7 +214,10 @@ struct lam_env_1 : lam_env {
         return {};
     }
 
-    void insert(const char* sym, lam_value value) override { _map.emplace(sym, value); }
+    void insert(const char* sym, lam_value value) override {
+        auto pair = _map.emplace(sym, value);
+        assert(pair.second && "symbol already defined");
+    }
 
     static lam_type coerce_numeric_types(lam_value& a, lam_value& b) {
         auto at = a.type();
@@ -219,12 +266,14 @@ static void lam_print(lam_value val) {
         case lam_type::Double:
             printf("%lf", val.as_double());
             break;
-
         case lam_type::Int:
             printf("%li", val.as_int());
             break;
         case lam_type::Symbol:
             printf(":%s", val.as_sym()->val());
+            break;
+        case lam_type::String:
+            printf("%s", val.as_string()->val());
             break;
         case lam_type::List: {
             printf("(");
@@ -244,6 +293,8 @@ static void lam_print(lam_value val) {
         case lam_type::Operative:
             printf("O{%s}", val.as_func()->name);
             break;
+        default:
+            assert(false);
     }
 }
 
@@ -469,6 +520,9 @@ static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
                 assert(0);
                 return {};
             }
+        }
+        case lam_type::String: {
+            return lam_make_obj(obj);
         }
         default: {
             assert(0);
