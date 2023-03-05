@@ -64,7 +64,7 @@ lam_value lam_parse(const char* input) {
                 while (!done) {
                     switch (char c = *cur++) {
                         case '0': {
-                            assert(false);
+                            assert(false && "Unexpected end when parsing string");
                             break;
                         }
                         case '\\': {
@@ -74,7 +74,7 @@ lam_value lam_parse(const char* input) {
                                 cur += 1;
                                 start = cur;
                             } else {
-                                assert(false);
+                                assert(false); //TODO support more escapes
                             }
                             break;
                         }
@@ -270,7 +270,7 @@ static void lam_print(lam_value val) {
             printf("%li", val.as_int());
             break;
         case lam_type::Symbol:
-            printf(":%s", val.as_sym()->val());
+            printf(":%s", val.as_symbol()->val());
             break;
         case lam_type::String:
             printf("%s", val.as_string()->val());
@@ -314,12 +314,12 @@ lam_env* lam_make_env_builtin() {
                                       argsList->len - 1};  // drop sym from args list
             const char* variadic{nullptr};
 
-            if (args.size() >= 2 && args[args.size() - 2].as_sym()->val()[0] == '.') {
-                variadic = args[args.size() - 1].as_sym()->val();
+            if (args.size() >= 2 && args[args.size() - 2].as_symbol()->val()[0] == '.') {
+                variadic = args[args.size() - 1].as_symbol()->val();
                 args = args.subspan(0, args.size() - 2);
             }
             auto func = callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
-            const char* name = argsList->at(0).as_sym()->val();
+            const char* name = argsList->at(0).as_symbol()->val();
             func->type = lam_type::Applicative;
             func->invoke = &lam_invokelambda;
             func->name = name;
@@ -329,7 +329,7 @@ lam_env* lam_make_env_builtin() {
             func->variadic = variadic;
             char** names = func->args();
             for (size_t i = 0; i < args.size(); ++i) {
-                names[i] = const_cast<char*>(args[i].as_sym()->val());
+                names[i] = const_cast<char*>(args[i].as_symbol()->val());
             }
             lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
             env->insert(name, y);
@@ -351,7 +351,7 @@ lam_env* lam_make_env_builtin() {
             numArgs = args->len;
             argp = args->first();
         } else if (lhs.type() == lam_type::Symbol) {
-            variadic = lhs.as_sym()->val();
+            variadic = lhs.as_symbol()->val();
         } else {
             assert(false && "expected list or symbol");
         }
@@ -365,7 +365,7 @@ lam_env* lam_make_env_builtin() {
         func->variadic = variadic;
         char** names = func->args();
         for (int i = 0; i < numArgs; ++i) {
-            auto sym = argp[i].as_sym();
+            auto sym = argp[i].as_symbol();
             names[i] = const_cast<char*>(sym->val());
         }
         lam_value y = {.uval = lam_u64(func) | Magic::TagObj};

@@ -59,7 +59,7 @@ union lam_value {
         return dval;
     }
 
-    lam_symbol* as_sym() const {
+    lam_symbol* as_symbol() const {
         assert((uval & Magic::Mask) == Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Symbol);
