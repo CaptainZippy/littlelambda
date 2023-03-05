@@ -109,7 +109,7 @@ lam_value lam_parse(const char* input) {
                         val = lam_make_double(asDbl);
                         break;
                     }
-                    val = lam_make_sym(start, end - start);
+                    val = lam_make_symbol(start, end - start);
                 } while (false);
 
                 if (curList) {
@@ -124,9 +124,9 @@ lam_value lam_parse(const char* input) {
     return {};
 }
 
-lam_value lam_make_sym(const char* s, size_t n) {
+lam_value lam_make_symbol(const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
-    auto* d = callocPlus<lam_sym>(len + 1);
+    auto* d = callocPlus<lam_symbol>(len + 1);
     d->type = lam_type::Symbol;
     d->len = len;
     d->cap = len;
@@ -305,7 +305,7 @@ lam_env* lam_make_env_builtin() {
         auto lhs = a[0];
         auto rhs = a[1];
         if (lhs.type() == lam_type::Symbol) {
-            auto sym = reinterpret_cast<lam_sym*>(lhs.uval & ~Magic::Mask);
+            auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~Magic::Mask);
             auto r = lam_eval(rhs, env);
             env->insert(sym->val(), r);
         } else if (lhs.type() == lam_type::List) {
@@ -498,7 +498,7 @@ lam_env* lam_make_env_builtin() {
 static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
     switch (obj->type) {
         case lam_type::Symbol: {
-            auto sym = static_cast<lam_sym*>(obj);
+            auto sym = static_cast<lam_symbol*>(obj);
             return env->lookup(sym->val());
         }
         case lam_type::List: {
