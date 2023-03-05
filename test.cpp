@@ -91,12 +91,17 @@ int main() {
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             R"---(
             (begin
-              (print "\n")
+              (print "hello\n")
               (define (test_one expr) (begin (define a 202) (eval expr)))
               (define (test_two expr) (begin (define a 999) (eval expr)))
-              (define foo (quote + 101 a))
-              (print (test_one foo) "\n")
-              (print (test_two foo) "\n")
+              (define qfoo (quote (+ (* 6 7) a)))
+              (define lfoo (list + (* 6 7) (quote a)))
+              (print "qfoo" qfoo "\n")
+              (print "lfoo" lfoo "\n")
+              (print (test_one qfoo) "\n")
+              (print (test_two qfoo) "\n")
+              (print (test_one lfoo) "\n")
+              (print (test_two lfoo) "\n")
               303)
             )---");
         lam_env* env = lam_make_env_builtin();

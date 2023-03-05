@@ -386,7 +386,8 @@ lam_env* lam_make_env_builtin() {
         }
     });
     ret->add_operative("quote", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        return lam_make_list_v(a, n);
+        assert(n == 1);
+        return a[0];
     });
     ret->add_applicative("eval", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 1);
@@ -521,7 +522,9 @@ static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
                 return {};
             }
         }
-        case lam_type::String: {
+        case lam_type::String:
+        case lam_type::Applicative:
+        case lam_type::Operative: {
             return lam_make_obj(obj);
         }
         default: {
