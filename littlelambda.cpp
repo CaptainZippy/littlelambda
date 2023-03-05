@@ -74,7 +74,7 @@ lam_value lam_parse(const char* input) {
                                 cur += 1;
                                 start = cur;
                             } else {
-                                assert(false); //TODO support more escapes
+                                assert(false);  // TODO support more escapes
                             }
                             break;
                         }
@@ -154,20 +154,16 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
-lam_env::~lam_env() {}
+struct lam_env : lam_obj {
+    lam_env(lam_env* parent) : lam_obj(lam_type::Environment), _parent(parent) {}
 
-struct lam_env_1 : lam_env {
-    ~lam_env_1() override {}
-
-    lam_env_1() {}
-
-    lam_env_1(const char* keys[],
-              size_t nkeys,
-              lam_value* values,
-              size_t nvalues,
-              lam_env* parent,
-              const char* variadic)
-        : _parent(parent) {
+    lam_env(const char* keys[],
+            size_t nkeys,
+            lam_value* values,
+            size_t nvalues,
+            lam_env* parent,
+            const char* variadic)
+        : lam_obj(lam_type::Environment), _parent(parent) {
         assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
         for (size_t i = 0; i < nkeys; ++i) {
             add_value(keys[i], values[i]);
@@ -202,7 +198,7 @@ struct lam_env_1 : lam_env {
         _map.emplace(name, v);
     }
 
-    lam_value lookup(const char* sym) override {
+    lam_value lookup(const char* sym) {
         auto it = _map.find(sym);
         if (it != _map.end()) {
             return it->second;
@@ -214,7 +210,7 @@ struct lam_env_1 : lam_env {
         return {};
     }
 
-    void insert(const char* sym, lam_value value) override {
+    void insert(const char* sym, lam_value value) {
         auto pair = _map.emplace(sym, value);
         assert(pair.second && "symbol already defined");
     }
@@ -241,9 +237,10 @@ struct lam_env_1 : lam_env {
     std::unordered_map<std::string, lam_value> _map;
     lam_env* _parent{nullptr};
 };
+
 static lam_value lam_invokelambda(lam_callable* call, lam_env* env, lam_value* args, auto narg) {
-    lam_env_1* inner = inner = new lam_env_1((const char**)call->args(), call->num_args, args, narg,
-                                             call->env, call->variadic);
+    lam_env* inner = inner = new lam_env((const char**)call->args(), call->num_args, args, narg,
+                                         call->env, call->variadic);
     return lam_eval(call->body, inner);
 }
 
@@ -293,13 +290,16 @@ static void lam_print(lam_value val) {
         case lam_type::Operative:
             printf("O{%s}", val.as_func()->name);
             break;
+        case lam_type::Environment:
+            printf("E{%p}", val.as_env());
+            break;
         default:
             assert(false);
     }
 }
 
 lam_env* lam_make_env_builtin() {
-    lam_env_1* ret = new lam_env_1();
+    lam_env* ret = new lam_env(nullptr);
     ret->add_operative("define", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
         auto lhs = a[0];
@@ -390,12 +390,23 @@ lam_env* lam_make_env_builtin() {
         return a[0];
     });
     ret->add_applicative("eval", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 1);
-        return lam_eval(a[0], env);
+        switch (n) {
+            case 1:
+                return lam_eval(a[0], env);
+            case 2:
+                return lam_eval(a[0], a[1].as_env());
+            default:
+                assert(false && "1 or 2 args needed for eval");
+                return lam_value{};
+        }
     });
     ret->add_applicative("begin", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n >= 1);
         return a[n - 1];
+    });
+    ret->add_applicative("getenv", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        assert(n == 0);
+        return lam_make_value(env);
     });
 
     ret->add_applicative("print", [](lam_callable* call, lam_env* env, auto a, auto n) {
@@ -440,7 +451,7 @@ lam_env* lam_make_env_builtin() {
 
     ret->add_applicative("*", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
-        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
                 return lam_make_double(a[0].dval * a[1].dval);
             case lam_type::Int:
@@ -452,7 +463,7 @@ lam_env* lam_make_env_builtin() {
     });
     ret->add_applicative("+", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
-        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
                 return lam_make_double(a[0].dval + a[1].dval);
             case lam_type::Int:
@@ -464,7 +475,7 @@ lam_env* lam_make_env_builtin() {
     });
     ret->add_applicative("-", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
-        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
                 return lam_make_double(a[0].dval - a[1].dval);
             case lam_type::Int:
@@ -482,7 +493,7 @@ lam_env* lam_make_env_builtin() {
     });
     ret->add_applicative("<=", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
-        switch (lam_env_1::coerce_numeric_types(a[0], a[1])) {
+        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
             case lam_type::Double:
                 return lam_make_int(a[0].dval <= a[1].dval);
             case lam_type::Int:
@@ -525,7 +536,7 @@ static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
         case lam_type::String:
         case lam_type::Applicative:
         case lam_type::Operative: {
-            return lam_make_obj(obj);
+            return lam_make_value(obj);
         }
         default: {
             assert(0);

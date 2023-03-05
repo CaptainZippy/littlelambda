@@ -17,6 +17,7 @@ enum class lam_type {
     List,
     Applicative,
     Operative,
+    Environment,
 };
 
 struct lam_env;
@@ -78,6 +79,13 @@ union lam_value {
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
         assert(obj->type == lam_type::Applicative || obj->type == lam_type::Operative);
         return reinterpret_cast<lam_callable*>(obj);
+    }
+
+    lam_env* as_env() const {
+        assert((uval & Magic::Mask) == Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert(obj->type == lam_type::Environment);
+        return reinterpret_cast<lam_env*>(obj);
     }
 
     lam_list* as_list() const {
@@ -157,18 +165,14 @@ static inline lam_value lam_make_list_l(Args... args) {
 
 lam_value lam_make_list_v(const lam_value* values, size_t N);
 
+lam_value lam_make_env(lam_env* parent);
+
 lam_env* lam_make_env_builtin();
-static inline lam_value lam_make_obj(lam_obj* obj) {
+static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | Magic::TagObj};
 }
 
 //
-
-struct lam_env {
-    virtual ~lam_env() = 0;
-    virtual lam_value lookup(const char* sym) = 0;
-    virtual void insert(const char* sym, lam_value) = 0;
-};
 
 lam_value lam_eval(lam_value val, lam_env* env);
 lam_value lam_parse(const char* input);
