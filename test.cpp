@@ -2,7 +2,7 @@
 #include "littlelambda.h"
 
 int main() {
-    if(1) {
+    if (1) {
         lam_parse("hello");
         lam_parse("12");
         lam_parse("12.2");
@@ -11,30 +11,30 @@ int main() {
         lam_parse("(begin (define r 10) (* pi (* r r)))");
     }
 
-    if(1) {
+    if (1) {
         lam_value expr = lam_parse("(begin (define r 10) (* pi (* r r)))");
-        lam_env* env = lam_env::builtin();
+        lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
     }
 
-    if(1) {
-        lam_value expr = lam_parse(
-            "(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))" );
+    if (1) {
+        lam_value expr =
+            lam_parse("(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))");
 
-        lam_env* env = lam_env::builtin();
+        lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 9 * 3.1);
         assert(obj.dval < 9 * 3.2);
     }
 
-    if(1) {
+    if (1) {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
             "   (fact 5))");
 
-        lam_env* env = lam_env::builtin();
+        lam_env* env = lam_make_env_builtin();
         for (int i = 0; i < 10000; ++i) {
             lam_value obj = lam_eval(expr, env);
             assert(obj.as_int() == 120);
@@ -50,7 +50,7 @@ int main() {
             "   (define repeat (lambda (f) (lambda (x) (f (f x)))))"
             "   ((repeat twice) 10)"
             ")");
-        lam_env* env = lam_env::builtin();
+        lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 40);
 
@@ -81,7 +81,7 @@ int main() {
             //"    (mapreduce (curry equal? item)"
             "             + L))"
             "  (count 0 (list 0 1 2 0 3 0 0)))");
-        lam_env* env = lam_env::builtin();
+        lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 4);
     }

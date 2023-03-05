@@ -13,12 +13,14 @@ static bool is_word_boundary(char c) {
     return is_white(c) || c == '(' || c == ')' || c == '\0';
 }
 
+// Allocate and zero "sizeof(T) + extra" bytes
 template <typename T>
 static T* callocPlus(size_t extra) {
     void* p = calloc(1, sizeof(T) + extra);
     return reinterpret_cast<T*>(p);
 }
 
+// Parse null terminated input
 lam_value lam_parse(const char* input) {
     std::vector<std::vector<lam_value>> stack;
     std::vector<lam_value>* curList{};
@@ -73,7 +75,7 @@ lam_value lam_parse(const char* input) {
                         val = lam_make_double(asDbl);
                         break;
                     }
-                    val = lam_Sym(start, end - start);
+                    val = lam_make_sym(start, end - start);
                 } while (false);
 
                 if (curList) {
@@ -88,7 +90,7 @@ lam_value lam_parse(const char* input) {
     return {};
 }
 
-lam_value lam_Sym(const char* s, size_t n) {
+lam_value lam_make_sym(const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = callocPlus<lam_sym>(len + 1);
     d->type = lam_type::Symbol;
@@ -245,7 +247,7 @@ static void lam_print(lam_value val) {
     }
 }
 
-lam_env* lam_env::builtin() {
+lam_env* lam_make_env_builtin() {
     lam_env_1* ret = new lam_env_1();
     ret->add_operative("define", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n == 2);
@@ -257,15 +259,15 @@ lam_env* lam_env::builtin() {
             env->insert(sym->val(), r);
         } else if (lhs.type() == lam_type::List) {
             auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
-            std::span<lam_value> args{argsList->first() + 1, argsList->len - 1}; // drop sym from args list
+            std::span<lam_value> args{argsList->first() + 1,
+                                      argsList->len - 1};  // drop sym from args list
             const char* variadic{nullptr};
 
             if (args.size() >= 2 && args[args.size() - 2].as_sym()->val()[0] == '.') {
                 variadic = args[args.size() - 1].as_sym()->val();
                 args = args.subspan(0, args.size() - 2);
             }
-            auto func =
-                callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
+            auto func = callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
             const char* name = argsList->at(0).as_sym()->val();
             func->type = lam_type::Applicative;
             func->invoke = &lam_invokelambda;
@@ -275,7 +277,7 @@ lam_env* lam_env::builtin() {
             func->num_args = args.size();
             func->variadic = variadic;
             char** names = func->args();
-            for (size_t i = 0; i < args.size(); ++i ) {
+            for (size_t i = 0; i < args.size(); ++i) {
                 names[i] = const_cast<char*>(args[i].as_sym()->val());
             }
             lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
@@ -436,11 +438,7 @@ lam_env* lam_env::builtin() {
     return ret;
 }
 
-lam_env* lam_env_builtin() {
-    return lam_env_1::builtin();
-}
-
-lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
+static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
     switch (obj->type) {
         case lam_type::Symbol: {
             auto sym = static_cast<lam_sym*>(obj);

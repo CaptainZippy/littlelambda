@@ -110,8 +110,8 @@ struct lam_callable : lam_obj {
     lam_invoke* invoke;
     lam_env* env;
     lam_value body;
-    size_t num_args; // not including variadic
-    const char* variadic; // if not null, bind extra arguments to this
+    size_t num_args;       // not including variadic
+    const char* variadic;  // if not null, bind extra arguments to this
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
@@ -123,13 +123,15 @@ struct lam_sym : lam_obj {
     // char name[cap]; // variable length
 };
 
+// Create values
+
 static inline lam_value lam_make_double(double d) {
     return {.dval = d};
 }
 static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | Magic::TagInt};
 }
-lam_value lam_Sym(const char* s, size_t n = size_t(-1));
+lam_value lam_make_sym(const char* s, size_t n = size_t(-1));
 
 template <typename... Args>
 static inline lam_value lam_make_list_l(Args... args) {
@@ -139,12 +141,17 @@ static inline lam_value lam_make_list_l(Args... args) {
 
 lam_value lam_make_list_v(size_t N, const lam_value* values);
 
+lam_env* lam_make_env_builtin();
+static inline lam_value lam_make_obj(lam_obj* obj) {
+    return {.uval = lam_u64(obj) | Magic::TagObj};
+}
+
+//
+
 struct lam_env {
     virtual ~lam_env() = 0;
     virtual lam_value lookup(const char* sym) = 0;
     virtual void insert(const char* sym, lam_value) = 0;
-
-    static lam_env* builtin();
 };
 
 lam_value lam_eval(lam_value val, lam_env* env);
