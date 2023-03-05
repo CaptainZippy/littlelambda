@@ -136,10 +136,10 @@ lam_value lam_make_sym(const char* s, size_t n = size_t(-1));
 template <typename... Args>
 static inline lam_value lam_make_list_l(Args... args) {
     lam_value values[] = {args...};
-    return lam_make_list_v(sizeof...(Args), values);
+    return lam_make_list_v(values, sizeof...(Args));
 }
 
-lam_value lam_make_list_v(size_t N, const lam_value* values);
+lam_value lam_make_list_v(const lam_value* values, size_t N);
 
 lam_env* lam_make_env_builtin();
 static inline lam_value lam_make_obj(lam_obj* obj) {

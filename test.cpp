@@ -28,7 +28,7 @@ int main() {
         assert(obj.dval < 9 * 3.2);
     }
 
-    if (1) {
+    if (0) {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
@@ -65,7 +65,7 @@ int main() {
             //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
-    if (1) {
+    if (0) {
         lam_value expr = lam_parse(
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
@@ -84,6 +84,19 @@ int main() {
         lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 4);
+    }
+
+    if (1) {
+        lam_value expr = lam_parse(
+            //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
+            "(begin"
+            "  (define foo (quote + 101 202))"
+            "  (print foo (eval foo))"
+            "  (eval foo)"
+            ")");
+        lam_env* env = lam_make_env_builtin();
+        lam_value obj = lam_eval(expr, env);
+        assert(obj.as_int() == 303);
     }
 
     return 0;

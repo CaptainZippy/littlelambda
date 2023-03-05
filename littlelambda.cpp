@@ -43,7 +43,7 @@ lam_value lam_parse(const char* input) {
                 break;
             }
             case ')': {
-                auto l = lam_make_list_v(curList->size(), curList->data());
+                auto l = lam_make_list_v(curList->data(), curList->size());
                 stack.pop_back();
                 if (stack.empty()) {
                     while (is_white(*cur)) {
@@ -101,7 +101,7 @@ lam_value lam_make_sym(const char* s, size_t n) {
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
-lam_value lam_make_list_v(size_t len, const lam_value* values) {
+lam_value lam_make_list_v(const lam_value* values, size_t len) {
     auto* d = callocPlus<lam_list>(len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
@@ -129,7 +129,7 @@ struct lam_env_1 : lam_env {
             add_value(keys[i], values[i]);
         }
         if (variadic) {
-            lam_value kw = lam_make_list_v(nvalues - nkeys, values + nkeys);
+            lam_value kw = lam_make_list_v(values + nkeys, nvalues - nkeys);
             add_value(keys[nkeys - 1], kw);
         }
     }
@@ -334,7 +334,13 @@ lam_env* lam_make_env_builtin() {
             return lam_make_double(0);
         }
     });
-    // add_special("quote",
+    ret->add_operative("quote", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        return lam_make_list_v(a, n);
+    });
+    ret->add_applicative("eval", [](lam_callable* call, lam_env* env, auto a, auto n) {
+        assert(n == 1);
+        return lam_eval(a[0], env);
+    });
     ret->add_applicative("begin", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n >= 1);
         return a[n - 1];
@@ -349,7 +355,7 @@ lam_env* lam_make_env_builtin() {
 
     ret->add_applicative("list", [](lam_callable* call, lam_env* env, auto a, auto n) {
         assert(n >= 1);
-        return lam_make_list_v(n, a);
+        return lam_make_list_v(a, n);
     });
 
     ret->add_applicative("equal?", [](lam_callable* call, lam_env* env, auto a, auto n) {
