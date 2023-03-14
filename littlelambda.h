@@ -45,7 +45,7 @@ struct lam_obj {
     lam_type type;
 };
 
-// NaN tagged value
+// 'Boxed' NaN tagged value
 union lam_value {
     lam_u64 uval;
     double dval;
@@ -102,7 +102,16 @@ union lam_value {
     }
 };
 
-using lam_invoke = lam_value(lam_callable* callable, lam_env* env, lam_value* a, size_t n);
+struct lam_value_or_tail_call {
+    lam_value_or_tail_call(lam_value v) : value(v), env(nullptr) {}
+    lam_value_or_tail_call(lam_value v, lam_env* e) : value(v), env(e) {}
+    lam_value value;  // If env is null, 'value' is the result.
+    lam_env* env;     // If env is not null the result is 'eval(value, env)'.
+};
+using lam_invoke = lam_value_or_tail_call(lam_callable* callable,
+                                          lam_env* env,
+                                          lam_value* a,
+                                          size_t n);
 
 struct lam_list : lam_obj {
     constexpr static const lam_type StaticType = lam_type::List;

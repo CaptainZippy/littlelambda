@@ -238,10 +238,13 @@ struct lam_env : lam_obj {
     lam_env* _parent{nullptr};
 };
 
-static lam_value lam_invokelambda(lam_callable* call, lam_env* env, lam_value* args, auto narg) {
+static lam_value_or_tail_call lam_invokelambda(lam_callable* call,
+                                               lam_env* env,
+                                               lam_value* args,
+                                               auto narg) {
     lam_env* inner = inner = new lam_env((const char**)call->args(), call->num_args, args, narg,
                                          call->env, call->variadic);
-    return lam_eval(call->body, inner);
+    return {call->body, inner};
 }
 
 static bool truthy(lam_value v) {
@@ -298,260 +301,304 @@ static void lam_print(lam_value val) {
     }
 }
 
+lam_value lam_eval_call(lam_callable* call, lam_env* env, lam_value* args, size_t narg) {
+    auto ret = call->invoke(call, env, args, narg);
+    if (ret.env == nullptr) {
+        return ret.value;
+    }
+    return lam_eval(ret.value, ret.env);
+}
+
 lam_env* lam_make_env_builtin() {
     lam_env* ret = new lam_env(nullptr);
-    ret->add_operative("define", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        auto lhs = a[0];
-        auto rhs = a[1];
-        if (lhs.type() == lam_type::Symbol) {
-            auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~Magic::Mask);
-            auto r = lam_eval(rhs, env);
-            env->insert(sym->val(), r);
-        } else if (lhs.type() == lam_type::List) {
-            auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
-            std::span<lam_value> args{argsList->first() + 1,
-                                      argsList->len - 1};  // drop sym from args list
-            const char* variadic{nullptr};
+    ret->add_operative(
+        "define", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            auto lhs = a[0];
+            auto rhs = a[1];
+            if (lhs.type() == lam_type::Symbol) {
+                auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~Magic::Mask);
+                auto r = lam_eval(rhs, env);
+                env->insert(sym->val(), r);
+            } else if (lhs.type() == lam_type::List) {
+                auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
+                std::span<lam_value> args{argsList->first() + 1,
+                                          argsList->len - 1};  // drop sym from args list
+                const char* variadic{nullptr};
 
-            if (args.size() >= 2 && args[args.size() - 2].as_symbol()->val()[0] == '.') {
-                variadic = args[args.size() - 1].as_symbol()->val();
-                args = args.subspan(0, args.size() - 2);
+                if (args.size() >= 2 && args[args.size() - 2].as_symbol()->val()[0] == '.') {
+                    variadic = args[args.size() - 1].as_symbol()->val();
+                    args = args.subspan(0, args.size() - 2);
+                }
+                auto func =
+                    callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
+                const char* name = argsList->at(0).as_symbol()->val();
+                func->type = lam_type::Applicative;
+                func->invoke = &lam_invokelambda;
+                func->name = name;
+                func->env = env;
+                func->body = rhs;
+                func->num_args = args.size();
+                func->variadic = variadic;
+                char** names = func->args();
+                for (size_t i = 0; i < args.size(); ++i) {
+                    names[i] = const_cast<char*>(args[i].as_symbol()->val());
+                }
+                lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
+                env->insert(name, y);
+            } else {
+                assert(false);
             }
-            auto func = callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
-            const char* name = argsList->at(0).as_symbol()->val();
+            return lam_value{};
+        });
+
+    ret->add_operative(
+        "lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2 && "wrong number of parameters to lambda");
+            auto lhs = a[0];
+            auto rhs = a[1];
+            size_t numArgs{0};
+            lam_value* argp{nullptr};
+            const char* variadic{nullptr};
+            if (lhs.type() == lam_type::List) {
+                auto args = lhs.as_list();
+                numArgs = args->len;
+                argp = args->first();
+            } else if (lhs.type() == lam_type::Symbol) {
+                variadic = lhs.as_symbol()->val();
+            } else {
+                assert(false && "expected list or symbol");
+            }
+            auto func = callocPlus<lam_callable>(numArgs * sizeof(char*));  // TODO intern names
             func->type = lam_type::Applicative;
             func->invoke = &lam_invokelambda;
-            func->name = name;
+            func->name = "lambda";
             func->env = env;
             func->body = rhs;
-            func->num_args = args.size();
+            func->num_args = numArgs;
             func->variadic = variadic;
             char** names = func->args();
-            for (size_t i = 0; i < args.size(); ++i) {
-                names[i] = const_cast<char*>(args[i].as_symbol()->val());
+            for (int i = 0; i < numArgs; ++i) {
+                auto sym = argp[i].as_symbol();
+                names[i] = const_cast<char*>(sym->val());
             }
             lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
-            env->insert(name, y);
-        } else {
+            return y;
+        });
+
+    ret->add_operative(
+        "if", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n >= 2);
+            assert(n <= 3);
+            auto cond = lam_eval(a[0], env);
+            if (truthy(cond)) {
+                return lam_value_or_tail_call(a[1], env);
+            } else if (n == 3) {
+                return lam_value_or_tail_call(a[2], env);
+            } else {
+                assert(false);
+                return lam_make_double(0);
+            }
+        });
+    ret->add_operative(
+        "quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 1);
+            return a[0];
+        });
+    ret->add_operative(
+        "begin", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n >= 1);
+            for (size_t i = 0; i < n - 1; ++i) {
+                lam_eval(a[i], env);
+            }
+            return {a[n - 1], env};
+        });
+    ret->add_applicative(
+        "eval", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            switch (n) {
+                case 1:
+                    return lam_eval(a[0], env);
+                case 2:
+                    return lam_eval(a[0], a[1].as_env());
+                default:
+                    assert(false && "1 or 2 args needed for eval");
+                    return lam_value{};
+            }
+        });
+    ret->add_applicative(
+        "getenv", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 0);
+            return lam_make_value(env);
+        });
+
+    ret->add_applicative(
+        "print", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            for (auto i = 0; i < n; ++i) {
+                lam_print(a[i]);
+            }
+            return lam_value{};
+        });
+
+    ret->add_applicative(
+        "list", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n >= 1);
+            return lam_make_list_v(a, n);
+        });
+
+    ret->add_applicative(
+        "equal?", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            auto l = a[0];
+            auto r = a[1];
+            if ((l.uval & Magic::Mask) != (r.uval & Magic::Mask)) {
+                return lam_make_int(false);
+            } else if ((l.uval & Magic::Mask) == Magic::TagInt) {
+                return lam_make_int(unsigned(l.uval) == unsigned(r.uval));
+            }
+            // TODO other types
             assert(false);
-        }
-        return lam_value{};
-    });
+            return lam_value{};
+        });
 
-    ret->add_operative("lambda", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2 && "wrong number of parameters to lambda");
-        auto lhs = a[0];
-        auto rhs = a[1];
-        size_t numArgs{0};
-        lam_value* argp{nullptr};
-        const char* variadic{nullptr};
-        if (lhs.type() == lam_type::List) {
-            auto args = lhs.as_list();
-            numArgs = args->len;
-            argp = args->first();
-        } else if (lhs.type() == lam_type::Symbol) {
-            variadic = lhs.as_symbol()->val();
-        } else {
-            assert(false && "expected list or symbol");
-        }
-        auto func = callocPlus<lam_callable>(numArgs * sizeof(char*));  // TODO intern names
-        func->type = lam_type::Applicative;
-        func->invoke = &lam_invokelambda;
-        func->name = "lambda";
-        func->env = env;
-        func->body = rhs;
-        func->num_args = numArgs;
-        func->variadic = variadic;
-        char** names = func->args();
-        for (int i = 0; i < numArgs; ++i) {
-            auto sym = argp[i].as_symbol();
-            names[i] = const_cast<char*>(sym->val());
-        }
-        lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
-        return y;
-    });
+    ret->add_applicative(
+        "mapreduce",
+        [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 3);
+            lam_callable* map = a[0].as_func();
+            lam_callable* red = a[1].as_func();
+            lam_list* lst = a[2].as_list();
+            assert(lst->len >= 1);
+            lam_value acc[]{lam_eval_call(map, env, lst->first(), 1), {}};
+            for (size_t i = 1; i < lst->len; ++i) {
+                acc[1] = lam_eval_call(map, env, lst->first() + i, 1);
+                acc[0] = lam_eval_call(red, env, acc, 2);
+            }
+            return acc[0];
+        });
 
-    ret->add_operative("if", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n >= 2);
-        assert(n <= 3);
-        auto cond = lam_eval(a[0], env);
-        if (truthy(cond)) {
-            return lam_eval(a[1], env);
-        } else if (n == 3) {
-            return lam_eval(a[2], env);
-        } else {
-            assert(false);
-            return lam_make_double(0);
-        }
-    });
-    ret->add_operative("quote", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 1);
-        return a[0];
-    });
-    ret->add_applicative("eval", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        switch (n) {
-            case 1:
-                return lam_eval(a[0], env);
-            case 2:
-                return lam_eval(a[0], a[1].as_env());
-            default:
-                assert(false && "1 or 2 args needed for eval");
-                return lam_value{};
-        }
-    });
-    ret->add_applicative("begin", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n >= 1);
-        return a[n - 1];
-    });
-    ret->add_applicative("getenv", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 0);
-        return lam_make_value(env);
-    });
-
-    ret->add_applicative("print", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        for (auto i = 0; i < n; ++i) {
-            lam_print(a[i]);
-        }
-        return lam_value{};
-    });
-
-    ret->add_applicative("list", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n >= 1);
-        return lam_make_list_v(a, n);
-    });
-
-    ret->add_applicative("equal?", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        auto l = a[0];
-        auto r = a[1];
-        if ((l.uval & Magic::Mask) != (r.uval & Magic::Mask)) {
-            return lam_make_int(false);
-        } else if ((l.uval & Magic::Mask) == Magic::TagInt) {
-            return lam_make_int(unsigned(l.uval) == unsigned(r.uval));
-        }
-        // TODO other types
-        assert(false);
-        return lam_value{};
-    });
-
-    ret->add_applicative("mapreduce", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 3);
-        lam_callable* map = a[0].as_func();
-        lam_callable* red = a[1].as_func();
-        lam_list* lst = a[2].as_list();
-        assert(lst->len >= 1);
-        lam_value acc[]{map->invoke(map, env, lst->first(), 1), {}};
-        for (size_t i = 1; i < lst->len; ++i) {
-            acc[1] = map->invoke(map, env, lst->first() + i, 1);
-            acc[0] = red->invoke(red, env, acc, 2);
-        }
-        return acc[0];
-    });
-
-    ret->add_applicative("*", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-            case lam_type::Double:
-                return lam_make_double(a[0].dval * a[1].dval);
-            case lam_type::Int:
-                return lam_make_int(a[0].as_int() * a[1].as_int());
-            default:
-                assert(false);
-                return lam_value{};
-        }
-    });
-    ret->add_applicative("+", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-            case lam_type::Double:
-                return lam_make_double(a[0].dval + a[1].dval);
-            case lam_type::Int:
-                return lam_make_int(a[0].as_int() + a[1].as_int());
-            default:
-                assert(false);
-                return lam_value{};
-        }
-    });
-    ret->add_applicative("-", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-            case lam_type::Double:
-                return lam_make_double(a[0].dval - a[1].dval);
-            case lam_type::Int:
-                return lam_make_int(a[0].as_int() - a[1].as_int());
-            default:
-                assert(false);
-                return lam_value{};
-        }
-    });
-    ret->add_applicative("/", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        assert(a[0].type() == lam_type::Double);  // TODO
-        assert(a[1].type() == lam_type::Double);
-        return lam_make_double(a[0].dval / a[1].dval);
-    });
-    ret->add_applicative("<=", [](lam_callable* call, lam_env* env, auto a, auto n) {
-        assert(n == 2);
-        switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-            case lam_type::Double:
-                return lam_make_int(a[0].dval <= a[1].dval);
-            case lam_type::Int:
-                return lam_make_int(a[0].as_int() <= a[1].as_int());
-            default:
-                assert(false);
-                return lam_value{};
-        }
-    });
+    ret->add_applicative(
+        "*", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
+                case lam_type::Double:
+                    return lam_make_double(a[0].dval * a[1].dval);
+                case lam_type::Int:
+                    return lam_make_int(a[0].as_int() * a[1].as_int());
+                default:
+                    assert(false);
+                    return lam_value{};
+            }
+        });
+    ret->add_applicative(
+        "+", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
+                case lam_type::Double:
+                    return lam_make_double(a[0].dval + a[1].dval);
+                case lam_type::Int:
+                    return lam_make_int(a[0].as_int() + a[1].as_int());
+                default:
+                    assert(false);
+                    return lam_value{};
+            }
+        });
+    ret->add_applicative(
+        "-", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
+                case lam_type::Double:
+                    return lam_make_double(a[0].dval - a[1].dval);
+                case lam_type::Int:
+                    return lam_make_int(a[0].as_int() - a[1].as_int());
+                default:
+                    assert(false);
+                    return lam_value{};
+            }
+        });
+    ret->add_applicative(
+        "/", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            assert(a[0].type() == lam_type::Double);  // TODO
+            assert(a[1].type() == lam_type::Double);
+            return lam_make_double(a[0].dval / a[1].dval);
+        });
+    ret->add_applicative(
+        "<=", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 2);
+            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
+                case lam_type::Double:
+                    return lam_make_int(a[0].dval <= a[1].dval);
+                case lam_type::Int:
+                    return lam_make_int(a[0].as_int() <= a[1].as_int());
+                default:
+                    assert(false);
+                    return lam_value{};
+            }
+        });
     ret->add_value("pi", lam_make_double(3.14159));
     return ret;
 }
 
-static lam_value lam_eval_obj(lam_obj* obj, lam_env* env) {
-    switch (obj->type) {
-        case lam_type::Symbol: {
-            auto sym = static_cast<lam_symbol*>(obj);
-            return env->lookup(sym->val());
-        }
-        case lam_type::List: {
-            auto list = static_cast<lam_list*>(obj);
-            assert(list->len);
-            lam_value head = lam_eval(list->at(0), env);
-            lam_callable* callable = reinterpret_cast<lam_callable*>(head.uval & ~Magic::Mask);
-
-            if (callable->type == lam_type::Operative) {
-                return callable->invoke(callable, env, list->first() + 1, list->len - 1);
-            } else if (callable->type == lam_type::Applicative) {
-                std::vector<lam_value> args;
-                args.resize(list->len - 1);
-                for (unsigned i = 1; i < list->len; ++i) {
-                    args[i - 1] = lam_eval(list->at(i), env);
-                }
-                return callable->invoke(callable, env, args.data(), args.size());
-            } else {
-                assert(0);
-                return {};
-            }
-        }
-        case lam_type::String:
-        case lam_type::Applicative:
-        case lam_type::Operative: {
-            return lam_make_value(obj);
-        }
-        default: {
-            assert(0);
-            return {};
-        }
-    }
-}
-
 lam_value lam_eval(lam_value val, lam_env* env) {
-    switch (val.uval & Magic::Mask) {
-        case Magic::TagObj:
-            return lam_eval_obj(reinterpret_cast<lam_obj*>(val.uval & ~Magic::Mask), env);
-        case Magic::TagInt:
-            return val;
-        default:
-            return val;
+    while (true) {
+        switch (val.uval & Magic::Mask) {
+            case Magic::TagObj: {
+                lam_obj* obj = reinterpret_cast<lam_obj*>(val.uval & ~Magic::Mask);
+                switch (obj->type) {
+                    case lam_type::Symbol: {
+                        auto sym = static_cast<lam_symbol*>(obj);
+                        return env->lookup(sym->val());
+                    }
+                    case lam_type::List: {
+                        auto list = static_cast<lam_list*>(obj);
+                        assert(list->len);
+                        lam_value head = lam_eval(list->at(0), env);
+                        lam_callable* callable =
+                            reinterpret_cast<lam_callable*>(head.uval & ~Magic::Mask);
+
+                        if (callable->type == lam_type::Operative) {
+                            lam_value_or_tail_call res =
+                                callable->invoke(callable, env, list->first() + 1, list->len - 1);
+                            if (res.env == nullptr) {
+                                return res.value;
+                            }
+                            val = res.value;
+                            env = res.env;
+                        } else if (callable->type == lam_type::Applicative) {
+                            std::vector<lam_value> args;
+                            args.resize(list->len - 1);
+                            for (unsigned i = 1; i < list->len; ++i) {
+                                args[i - 1] = lam_eval(list->at(i), env);
+                            }
+                            lam_value_or_tail_call res =
+                                callable->invoke(callable, env, args.data(), args.size());
+                            if (res.env == nullptr) {
+                                return res.value;
+                            }
+                            val = res.value;
+                            env = res.env;
+                        } else {
+                            assert(0);
+                            return {};
+                        }
+                        break;
+                    }
+                    case lam_type::String:
+                    case lam_type::Applicative:
+                    case lam_type::Operative: {
+                        return lam_make_value(obj);
+                    }
+                    default: {
+                        assert(0);
+                        return {};
+                    }
+                }
+                break;
+            }
+            case Magic::TagInt:
+                return val;
+            default:
+                return val;
+        }
     }
 }

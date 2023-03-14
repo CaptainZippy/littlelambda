@@ -65,7 +65,7 @@ int main() {
             //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
-    if (0) {
+    if (1) {
         lam_value expr = lam_parse(
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
