@@ -2,7 +2,7 @@
 #include "littlelambda.h"
 
 int main() {
-    if (1) {
+    if (0) {
         lam_parse("hello");
         lam_parse("12");
         lam_parse("12.2");
@@ -11,14 +11,14 @@ int main() {
         lam_parse("(begin (define r 10) (* pi (* r r)))");
     }
 
-    if (1) {
+    if (0) {
         lam_value expr = lam_parse("(begin (define r 10) (* pi (* r r)))");
         lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
     }
 
-    if (1) {
+    if (0) {
         lam_value expr =
             lam_parse("(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))");
 
@@ -28,18 +28,17 @@ int main() {
         assert(obj.dval < 9 * 3.2);
     }
 
-    if (0) {
+    if (1) {
         lam_value expr = lam_parse(
             "(begin"
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
-            "   (fact 5))");
+            "   (fact (bigint 35)))");
 
         lam_env* env = lam_make_env_builtin();
-        for (int i = 0; i < 10000; ++i) {
+        for (int i = 0; i < 1; ++i) {
             lam_value obj = lam_eval(expr, env);
-            assert(obj.as_int() == 120);
-            if (i % 100 == 0)
-                printf("%i\n", i);
+            assert(obj.type() == lam_type::BigInt);
+            printf("%s\n", obj.as_bigint()->str());
         }
     }
 

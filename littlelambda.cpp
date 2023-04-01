@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-#pragma warning(disable : 6011)
+#pragma warning(disable : 6011)  // Dereferencing NULL pointer 'pointer-name'.
 
 static bool is_white(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
@@ -142,6 +142,21 @@ lam_value lam_make_string(const char* s, size_t n) {
     d->len = len;
     memcpy(d + 1, s, len);
     reinterpret_cast<char*>(d + 1)[len] = 0;
+    return {.uval = lam_u64(d) | Magic::TagObj};
+}
+
+lam_value lam_make_bigint(int i) {
+    auto* d = callocPlus<lam_bigint>(0);
+    d->type = lam_type::BigInt;
+    mpz_init_set_si(d->mp, i);
+    return {.uval = lam_u64(d) | Magic::TagObj};
+}
+
+lam_value lam_make_bigint(mpz_t m) {
+    auto* d = callocPlus<lam_bigint>(0);
+    d->type = lam_type::BigInt;
+    static_assert(sizeof(d->mp) == 16);
+    memcpy(d->mp, m, sizeof(d->mp));
     return {.uval = lam_u64(d) | Magic::TagObj};
 }
 
@@ -309,6 +324,13 @@ lam_value lam_eval_call(lam_callable* call, lam_env* env, lam_value* args, size_
     return lam_eval(ret.value, ret.env);
 }
 
+static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
+    assert(xt <= lam_type::BigInt);
+    assert(yt <= lam_type::BigInt);
+    assert(int(lam_type::BigInt) <= 2);
+    return (int(xt) << 2) | int(yt);
+}
+
 lam_env* lam_make_env_builtin() {
     lam_env* ret = new lam_env(nullptr);
     ret->add_operative(
@@ -446,6 +468,13 @@ lam_env* lam_make_env_builtin() {
         });
 
     ret->add_applicative(
+        "bigint", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 1);
+            assert(a[0].type() == lam_type::Int);
+            return lam_make_bigint(a[0].as_int());
+        });
+
+    ret->add_applicative(
         "equal?", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
             auto l = a[0];
@@ -479,15 +508,64 @@ lam_env* lam_make_env_builtin() {
     ret->add_applicative(
         "*", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
+            lam_value x = a[0];
+            lam_value y = a[1];
+            lam_type xt = x.type();
+            lam_type yt = y.type();
+            switch (combine_numeric_types(xt, yt)) {
+                case combine_numeric_types(lam_type::Double, lam_type::Double):
+                    return lam_make_double(x.dval * y.dval);
+                case combine_numeric_types(lam_type::Double, lam_type::Int):
+                    return lam_make_double(x.dval * double(y.as_int()));
+                case combine_numeric_types(lam_type::Double, lam_type::BigInt):
+                    assert(false);
+                    return lam_value{};
+
+                case combine_numeric_types(lam_type::Int, lam_type::Double):
+                    return lam_make_double(double(x.as_int()) * y.dval);
+                case combine_numeric_types(lam_type::Int, lam_type::Int):
+                    return lam_make_int(x.as_int() * y.as_int());
+                case combine_numeric_types(lam_type::Int, lam_type::BigInt):
+                    assert(false);
+                    // return lam_make_bigint(x.as_int() - y.as_int());
+                    // c = mpz_cmp_si(y.as_bigint()->mp, x.as_int()) >= 0;
+                    return lam_value{};
+
+                case combine_numeric_types(lam_type::BigInt, lam_type::Double):
+                    assert(false);
+                    break;
+                case combine_numeric_types(lam_type::BigInt, lam_type::Int): {
+                    mpz_t r;
+                    mpz_init(r);
+                    mpz_mul_si(r, x.as_bigint()->mp, y.as_int());
+                    return lam_make_bigint(r);
+                } break;
+                case combine_numeric_types(lam_type::BigInt, lam_type::BigInt): {
+                    mpz_t r;
+                    mpz_init(r);
+                    mpz_mul(r, x.as_bigint()->mp, y.as_bigint()->mp);
+                    return lam_make_bigint(r);
+                }
+                default:
+                    assert(false);
+            }
+            return lam_value{};
+            /*assert(n == 2);
             switch (lam_env::coerce_numeric_types(a[0], a[1])) {
                 case lam_type::Double:
                     return lam_make_double(a[0].dval * a[1].dval);
                 case lam_type::Int:
                     return lam_make_int(a[0].as_int() * a[1].as_int());
+                case lam_type::BigInt: {
+                    mpz_t r;
+                    mpz_init(r);
+                    mpz_mul(r, a[0].as_bigint()->mp, a[1].as_bigint()->mp);
+                    return lam_make_bigint(r);
+                }
                 default:
                     assert(false);
                     return lam_value{};
-            }
+            }*/
         });
     ret->add_applicative(
         "+", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -504,7 +582,56 @@ lam_env* lam_make_env_builtin() {
         });
     ret->add_applicative(
         "-", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
-            assert(n == 2);
+        assert(n == 2);
+        lam_value x = a[0];
+        lam_value y = a[1];
+        lam_type xt = x.type();
+        lam_type yt = y.type();
+        switch (combine_numeric_types(xt, yt)) {
+            case combine_numeric_types(lam_type::Double, lam_type::Double):
+                return lam_make_double( x.dval - y.dval );
+            case combine_numeric_types(lam_type::Double, lam_type::Int):
+                return lam_make_double( x.dval - double(y.as_int()) );
+            case combine_numeric_types(lam_type::Double, lam_type::BigInt):
+                assert(false);
+                return lam_value{};
+
+            case combine_numeric_types(lam_type::Int, lam_type::Double):
+                return lam_make_double(double(x.as_int()) - y.dval );
+            case combine_numeric_types(lam_type::Int, lam_type::Int):
+                return lam_make_int( x.as_int() - y.as_int() );
+            case combine_numeric_types(lam_type::Int, lam_type::BigInt):
+                assert(false);
+                //return lam_make_bigint(x.as_int() - y.as_int());
+                //c = mpz_cmp_si(y.as_bigint()->mp, x.as_int()) >= 0;
+                return lam_value{};
+
+            case combine_numeric_types(lam_type::BigInt, lam_type::Double):
+                assert(false);
+                break;
+            case combine_numeric_types(lam_type::BigInt, lam_type::Int): {
+                mpz_t r;
+                mpz_init(r);
+                long z = y.as_int();
+                if (z >= 0) {
+                    mpz_sub_ui(r, x.as_bigint()->mp, z);
+                } else {
+                    mpz_add_ui(r, x.as_bigint()->mp, -z);
+                }
+                return lam_make_bigint(r);
+            }
+                break;
+            case combine_numeric_types(lam_type::BigInt, lam_type::BigInt): {
+                mpz_t r;
+                mpz_init(r);
+                mpz_sub(r, x.as_bigint()->mp, y.as_bigint()->mp);
+                return lam_make_bigint(r);
+            }
+            default:
+                assert(false);
+        }
+        return lam_value{};
+        /*assert(n == 2);
             switch (lam_env::coerce_numeric_types(a[0], a[1])) {
                 case lam_type::Double:
                     return lam_make_double(a[0].dval - a[1].dval);
@@ -513,7 +640,7 @@ lam_env* lam_make_env_builtin() {
                 default:
                     assert(false);
                     return lam_value{};
-            }
+            }*/
         });
     ret->add_applicative(
         "/", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -525,15 +652,46 @@ lam_env* lam_make_env_builtin() {
     ret->add_applicative(
         "<=", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
-            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-                case lam_type::Double:
-                    return lam_make_int(a[0].dval <= a[1].dval);
-                case lam_type::Int:
-                    return lam_make_int(a[0].as_int() <= a[1].as_int());
+            lam_value x = a[0];
+            lam_value y = a[1];
+            lam_type xt = x.type();
+            lam_type yt = y.type();
+            int c = 0;
+            switch (combine_numeric_types(xt, yt)) {
+                case combine_numeric_types(lam_type::Double, lam_type::Double):
+                    c = x.dval <= y.dval;
+                    break;
+                case combine_numeric_types(lam_type::Double, lam_type::Int):
+                    c = x.dval <= double(y.as_int());
+                    break;
+                case combine_numeric_types(lam_type::Double, lam_type::BigInt):
+                    c = mpz_cmp_d(y.as_bigint()->mp, x.as_double()) >= 0;
+                    break;
+
+                case combine_numeric_types(lam_type::Int, lam_type::Double):
+                    c = double(x.as_int()) <= y.dval;
+                    break;
+                case combine_numeric_types(lam_type::Int, lam_type::Int):
+                    c = x.as_int() <= y.as_int();
+                    break;
+                case combine_numeric_types(lam_type::Int, lam_type::BigInt):
+                    c = mpz_cmp_si(y.as_bigint()->mp, x.as_int()) >= 0;
+                    break;
+
+                case combine_numeric_types(lam_type::BigInt, lam_type::Double):
+                    c = mpz_cmp_d(x.as_bigint()->mp, y.as_double()) <= 0;
+                    break;
+                case combine_numeric_types(lam_type::BigInt, lam_type::Int):
+                    c = mpz_cmp_si(x.as_bigint()->mp, y.as_int()) <= 0;
+                    break;
+                case combine_numeric_types(lam_type::BigInt, lam_type::BigInt):
+                    c = mpz_cmp(x.as_bigint()->mp, y.as_bigint()->mp) <= 0;
+                    break;
                 default:
                     assert(false);
                     return lam_value{};
             }
+            return lam_make_int(c);
         });
     ret->add_value("pi", lam_make_double(3.14159));
     return ret;

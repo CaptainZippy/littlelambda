@@ -1,7 +1,10 @@
 #pragma once
 
+#include "mini-gmp.h"
+
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
+#define assert2(COND)
 #define assert(COND)    \
     if (!(COND)) {      \
         __debugbreak(); \
@@ -12,6 +15,7 @@ enum class lam_type {
     Double,
     Int,
     /*heap objects*/
+    BigInt,
     String,
     Symbol,
     List,
@@ -26,6 +30,7 @@ struct lam_symbol;
 struct lam_list;
 struct lam_string;
 struct lam_callable;
+struct lam_bigint;
 
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
@@ -73,6 +78,8 @@ union lam_value {
     lam_string* as_string() const { return try_cast_obj<lam_string>(uval); }
 
     lam_list* as_list() const { return try_cast_obj<lam_list>(uval); }
+
+    lam_bigint* as_bigint() const { return try_cast_obj<lam_bigint>(uval); }
 
     lam_callable* as_func() const {
         assert((uval & Magic::Mask) == Magic::TagObj);
@@ -151,6 +158,13 @@ struct lam_string : lam_obj {
     // char name[len]; char zero{0}; // variable length
 };
 
+struct lam_bigint : lam_obj {
+    constexpr static const lam_type StaticType = lam_type::BigInt;
+    mpz_t mp;  // TODO: flatten allocation in to the containing struct
+    char* str() { return mpz_get_str(nullptr, 10, mp); }   // TODO FREE
+};
+
+
 // Create values
 
 static inline lam_value lam_make_double(double d) {
@@ -161,6 +175,7 @@ static inline lam_value lam_make_int(int i) {
 }
 lam_value lam_make_symbol(const char* s, size_t n = size_t(-1));
 lam_value lam_make_string(const char* s, size_t n = size_t(-1));
+lam_value lam_make_bigint(int i);
 
 template <typename... Args>
 static inline lam_value lam_make_list_l(Args... args) {
