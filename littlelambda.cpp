@@ -429,11 +429,12 @@ lam_env* lam_make_env_builtin() {
         });
     ret->add_operative(
         "begin", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            lam_env* inner = new lam_env(env);
             assert(n >= 1);
             for (size_t i = 0; i < n - 1; ++i) {
-                lam_eval(a[i], env);
+                lam_eval(a[i], inner);
             }
-            return {a[n - 1], env};
+            return {a[n - 1], inner};
         });
     ret->add_applicative(
         "eval", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -525,11 +526,12 @@ lam_env* lam_make_env_builtin() {
                     return lam_make_double(double(x.as_int()) * y.dval);
                 case combine_numeric_types(lam_type::Int, lam_type::Int):
                     return lam_make_int(x.as_int() * y.as_int());
-                case combine_numeric_types(lam_type::Int, lam_type::BigInt):
-                    assert(false);
-                    // return lam_make_bigint(x.as_int() - y.as_int());
-                    // c = mpz_cmp_si(y.as_bigint()->mp, x.as_int()) >= 0;
-                    return lam_value{};
+                case combine_numeric_types(lam_type::Int, lam_type::BigInt): {
+                    mpz_t r;
+                    mpz_init(r);
+                    mpz_mul_si(r, y.as_bigint()->mp, x.as_int());
+                    return lam_make_bigint(r);
+                }
 
                 case combine_numeric_types(lam_type::BigInt, lam_type::Double):
                     assert(false);
