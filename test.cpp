@@ -60,7 +60,7 @@ int main() {
 
     if (0) {
         lam_value expr = lam_parse(
-            "(define range (a b) (if (= a b) (quote()) (cons a (range(+ a 1) b))))"
+            "(define (range a b) (if (= a b) (quote()) (cons a (range(+ a 1) b))))"
             //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }

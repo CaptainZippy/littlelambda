@@ -1,10 +1,11 @@
 
-Experiment based on https://norvig.com/lispy.html
-
-This differs from classic lisp which is based on lists+cons cells.
-In this verison, lists are arrays. Basic value types (int/double) do not have their own memory, only lists, symbols, functions have their own allocations.
+Experiment based on https://norvig.com/lispy.html and http://norvig.com/lispy2.html
 
 Features:
  * Written in a simple subset of C++.
- * NaN boxing.
- * No GC overhead for int/double types.
+ * NaN boxing. Basic types such as int/double are 64 bits and do not go to the heap.
+ * Lists, symbols, functions etc are heap allocated.
+ * Tail recursion optimization
+
+Missing features:
+ * Garbage collection (but see littlegc)
