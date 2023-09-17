@@ -35,7 +35,7 @@ struct lam_bigint;
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
 
-enum Magic : lam_u64 {
+enum lam_Magic : lam_u64 {
     // Anything other than 7ff8.... means the value is a non-nan double
     NormalNan = 0x7ff80000'00000000,  // 1000 - 'Normal' NaN prefix
     TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values
@@ -56,19 +56,19 @@ union lam_value {
     double dval;
 
     constexpr int as_int() const {
-        assert((uval & Magic::Mask) == TagInt);
+        assert((uval & lam_Magic::Mask) == TagInt);
         return int(unsigned(uval));
     }
 
     double as_double() const {
-        assert((uval & Magic::TaggedNan) != Magic::TaggedNan);
+        assert((uval & lam_Magic::TaggedNan) != lam_Magic::TaggedNan);
         return dval;
     }
 
     template <typename ReqType>
     static ReqType* try_cast_obj(lam_u64 val) {
-        assert((val & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(val & ~Magic::Mask);
+        assert((val & lam_Magic::Mask) == lam_Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(val & ~lam_Magic::Mask);
         assert(obj->type == ReqType::StaticType);
         return reinterpret_cast<ReqType*>(obj);
     }
@@ -82,23 +82,23 @@ union lam_value {
     lam_bigint* as_bigint() const { return try_cast_obj<lam_bigint>(uval); }
 
     lam_callable* as_func() const {
-        assert((uval & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
         assert(obj->type == lam_type::Applicative || obj->type == lam_type::Operative);
         return reinterpret_cast<lam_callable*>(obj);
     }
 
     lam_env* as_env() const {
-        assert((uval & Magic::Mask) == Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+        assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
         assert(obj->type == lam_type::Environment);
         return reinterpret_cast<lam_env*>(obj);
     }
 
     lam_type type() const {
-        switch (uval & Magic::Mask) {
+        switch (uval & lam_Magic::Mask) {
             case TagObj: {
-                auto o = reinterpret_cast<lam_obj*>(uval & ~Magic::Mask);
+                auto o = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
                 return o->type;
             }
             case TagInt:
@@ -171,7 +171,7 @@ static inline lam_value lam_make_double(double d) {
     return {.dval = d};
 }
 static inline lam_value lam_make_int(int i) {
-    return {.uval = lam_u32(i) | Magic::TagInt};
+    return {.uval = lam_u32(i) | lam_Magic::TagInt};
 }
 lam_value lam_make_symbol(const char* s, size_t n = size_t(-1));
 lam_value lam_make_string(const char* s, size_t n = size_t(-1));
@@ -189,7 +189,7 @@ lam_value lam_make_env(lam_env* parent);
 
 lam_env* lam_make_env_builtin();
 static inline lam_value lam_make_value(lam_obj* obj) {
-    return {.uval = lam_u64(obj) | Magic::TagObj};
+    return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }
 
 //

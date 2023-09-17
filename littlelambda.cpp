@@ -132,7 +132,7 @@ lam_value lam_make_symbol(const char* s, size_t n) {
     d->cap = len;
     memcpy(d + 1, s, len);
     reinterpret_cast<char*>(d + 1)[len] = 0;
-    return {.uval = lam_u64(d) | Magic::TagObj};
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
 lam_value lam_make_string(const char* s, size_t n) {
@@ -142,14 +142,14 @@ lam_value lam_make_string(const char* s, size_t n) {
     d->len = len;
     memcpy(d + 1, s, len);
     reinterpret_cast<char*>(d + 1)[len] = 0;
-    return {.uval = lam_u64(d) | Magic::TagObj};
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
 lam_value lam_make_bigint(int i) {
     auto* d = callocPlus<lam_bigint>(0);
     d->type = lam_type::BigInt;
     mpz_init_set_si(d->mp, i);
-    return {.uval = lam_u64(d) | Magic::TagObj};
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
 lam_value lam_make_bigint(mpz_t m) {
@@ -157,7 +157,7 @@ lam_value lam_make_bigint(mpz_t m) {
     d->type = lam_type::BigInt;
     static_assert(sizeof(d->mp) == 16);
     memcpy(d->mp, m, sizeof(d->mp));
-    return {.uval = lam_u64(d) | Magic::TagObj};
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
 lam_value lam_make_list_v(const lam_value* values, size_t len) {
@@ -166,7 +166,7 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     d->len = len;
     d->cap = len;
     memcpy(d + 1, values, len * sizeof(lam_value));
-    return {.uval = lam_u64(d) | Magic::TagObj};
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
 struct lam_env : lam_obj {
@@ -198,7 +198,7 @@ struct lam_env : lam_obj {
         d->env = nullptr;
         d->body = {};
         d->num_args = 0;
-        lam_value v{.uval = lam_u64(d) | Magic::TagObj};
+        lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
         _map.emplace(name, v);
     }
     void add_operative(const char* name, lam_invoke b) {
@@ -209,7 +209,7 @@ struct lam_env : lam_obj {
         d->env = nullptr;
         d->body = {};
         d->num_args = 0;
-        lam_value v{.uval = lam_u64(d) | Magic::TagObj};
+        lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
         _map.emplace(name, v);
     }
 
@@ -263,10 +263,10 @@ static lam_value_or_tail_call lam_invokelambda(lam_callable* call,
 }
 
 static bool truthy(lam_value v) {
-    if ((v.uval & Magic::Mask) == Magic::TagInt) {
+    if ((v.uval & lam_Magic::Mask) == lam_Magic::TagInt) {
         return unsigned(v.uval) != 0;
-    } else if ((v.uval & Magic::Mask) == Magic::TagObj) {
-        lam_obj* obj = reinterpret_cast<lam_obj*>(v.uval & ~Magic::Mask);
+    } else if ((v.uval & lam_Magic::Mask) == lam_Magic::TagObj) {
+        lam_obj* obj = reinterpret_cast<lam_obj*>(v.uval & ~lam_Magic::Mask);
         if (obj->type == lam_type::List) {
             lam_list* list = reinterpret_cast<lam_list*>(obj);
             return list->len != 0;
@@ -339,11 +339,11 @@ lam_env* lam_make_env_builtin() {
             auto lhs = a[0];
             auto rhs = a[1];
             if (lhs.type() == lam_type::Symbol) {
-                auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~Magic::Mask);
+                auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~lam_Magic::Mask);
                 auto r = lam_eval(rhs, env);
                 env->insert(sym->val(), r);
             } else if (lhs.type() == lam_type::List) {
-                auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~Magic::Mask);
+                auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~lam_Magic::Mask);
                 std::span<lam_value> args{argsList->first() + 1,
                                           argsList->len - 1};  // drop sym from args list
                 const char* variadic{nullptr};
@@ -366,7 +366,7 @@ lam_env* lam_make_env_builtin() {
                 for (size_t i = 0; i < args.size(); ++i) {
                     names[i] = const_cast<char*>(args[i].as_symbol()->val());
                 }
-                lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
+                lam_value y = {.uval = lam_u64(func) | lam_Magic::TagObj};
                 env->insert(name, y);
             } else {
                 assert(false);
@@ -404,7 +404,7 @@ lam_env* lam_make_env_builtin() {
                 auto sym = argp[i].as_symbol();
                 names[i] = const_cast<char*>(sym->val());
             }
-            lam_value y = {.uval = lam_u64(func) | Magic::TagObj};
+            lam_value y = {.uval = lam_u64(func) | lam_Magic::TagObj};
             return y;
         });
 
@@ -479,9 +479,9 @@ lam_env* lam_make_env_builtin() {
             assert(n == 2);
             auto l = a[0];
             auto r = a[1];
-            if ((l.uval & Magic::Mask) != (r.uval & Magic::Mask)) {
+            if ((l.uval & lam_Magic::Mask) != (r.uval & lam_Magic::Mask)) {
                 return lam_make_int(false);
-            } else if ((l.uval & Magic::Mask) == Magic::TagInt) {
+            } else if ((l.uval & lam_Magic::Mask) == lam_Magic::TagInt) {
                 return lam_make_int(unsigned(l.uval) == unsigned(r.uval));
             }
             // TODO other types
@@ -699,9 +699,9 @@ lam_env* lam_make_env_builtin() {
 
 lam_value lam_eval(lam_value val, lam_env* env) {
     while (true) {
-        switch (val.uval & Magic::Mask) {
-            case Magic::TagObj: {
-                lam_obj* obj = reinterpret_cast<lam_obj*>(val.uval & ~Magic::Mask);
+        switch (val.uval & lam_Magic::Mask) {
+            case lam_Magic::TagObj: {
+                lam_obj* obj = reinterpret_cast<lam_obj*>(val.uval & ~lam_Magic::Mask);
                 switch (obj->type) {
                     case lam_type::Symbol: {
                         auto sym = static_cast<lam_symbol*>(obj);
@@ -747,7 +747,7 @@ lam_value lam_eval(lam_value val, lam_env* env) {
                 }
                 break;
             }
-            case Magic::TagInt:
+            case lam_Magic::TagInt:
                 return val;
             default:  // double
                 return val;
