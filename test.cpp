@@ -2,8 +2,9 @@
 #include "littlelambda.h"
 
 int main() {
-    if (0) {
+    if (1) {
         lam_parse("hello");
+        lam_parse("\"world\"");
         lam_parse("12");
         lam_parse("12.2");
         lam_parse("(hello world)");

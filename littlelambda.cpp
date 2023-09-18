@@ -80,7 +80,12 @@ lam_value lam_parse(const char* input) {
                         }
                         case '"': {
                             res.append(start, cur - 1);
-                            curList->push_back(lam_make_string(res.data(), res.size()));
+                            auto val = lam_make_string(res.data(), res.size());
+                            if (curList) {
+                                curList->push_back(val);
+                            } else {
+                                return val;
+                            }
                             done = true;
                             break;
                         }
