@@ -13,3 +13,4 @@ endif()
 
 enable_testing()
 add_test(NAME Simple COMMAND $<TARGET_FILE:littlelambda>)
+

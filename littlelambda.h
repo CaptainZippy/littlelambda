@@ -4,11 +4,21 @@
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
+#if defined(_MSC_VER)
 extern void __debugbreak();  // Compiler Intrinsic
+#define lam_debugbreak() __debugbreak()
+#elif defined(__clang__)
+#define lam_debugbreak() __builtin_debugtrap()
+#elif defined(__GNUC__)
+#define lam_debugbreak() __builtin_trap()
+#else
+#error Fixme
+#endif
+
 #define assert2(COND)
-#define assert(COND)    \
-    if (!(COND)) {      \
-        __debugbreak(); \
+#define assert(COND)      \
+    if (!(COND)) {        \
+        lam_debugbreak(); \
     }
 
 /// Types a lam_value can contain.
@@ -51,6 +61,7 @@ enum lam_Magic : lam_u64 {
 /// Base class of all heap allocated objects.
 struct lam_obj {
     // lgc_object_t gcobj{};
+    lam_obj(lam_type t) : type{t} {}
     lam_type type;
 };
 

@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <vector>
+#include <cstdio>
 #include "littlelambda.h"
 
 int slurp(const char* path, std::vector<char>& buf) {

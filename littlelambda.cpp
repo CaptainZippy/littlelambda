@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <cstring>
 
 #pragma warning(disable : 6011)  // Dereferencing NULL pointer 'pointer-name'.
 
@@ -297,7 +298,7 @@ void lam_print(lam_value val) {
             printf("%lf", val.as_double());
             break;
         case lam_type::Int:
-            printf("%li", val.as_int());
+            printf("%i", val.as_int());
             break;
         case lam_type::Symbol:
             printf(":%s", val.as_symbol()->val());
@@ -310,7 +311,7 @@ void lam_print(lam_value val) {
             auto lst = val.as_list();
             const char* sep = "";
             for (auto i = 0; i < lst->len; ++i) {
-                printf(sep);
+                printf("%s", sep);
                 sep = " ";
                 lam_print(lst->at(i));
             }
