@@ -161,9 +161,8 @@ struct lam_string : lam_obj {
 struct lam_bigint : lam_obj {
     constexpr static const lam_type StaticType = lam_type::BigInt;
     mpz_t mp;  // TODO: flatten allocation in to the containing struct
-    char* str() { return mpz_get_str(nullptr, 10, mp); }   // TODO FREE
+    char* str() { return mpz_get_str(nullptr, 10, mp); }  // TODO FREE
 };
-
 
 // Create values
 
@@ -195,4 +194,6 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 //
 
 lam_value lam_eval(lam_value val, lam_env* env);
+lam_value lam_parse(const char* input, const char** restart);
 lam_value lam_parse(const char* input);
+void lam_print(lam_value val);

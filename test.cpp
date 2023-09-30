@@ -1,7 +1,33 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <vector>
 #include "littlelambda.h"
 
+int slurp(const char* path, std::vector<char>& buf) {
+    buf.clear();
+    FILE* fin = fopen(path, "rb");
+    if (fin == nullptr) {
+        return -1;
+    }
+    char b[4096];
+    while (size_t n = fread(b, 1, sizeof(b), fin)) {
+        buf.insert(buf.end(), &b[0], &b[n]);
+    }
+    fclose(fin);
+    buf.push_back(0);
+    return 0;
+}
+
 int main() {
+    std::vector<char> buf;
+    if (slurp("test.ll", buf) == 0) {
+        lam_env* env = lam_make_env_builtin();
+        for (const char* cur = buf.data(); *cur;) {
+            const char* next = nullptr;
+            lam_value expr = lam_parse(cur, &next);
+            cur = next;
+            lam_value obj = lam_eval(expr, env);
+        }
+    }
     if (1) {
         lam_parse("hello");
         lam_parse("\"world\"");
@@ -17,6 +43,19 @@ int main() {
         lam_env* env = lam_make_env_builtin();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
+    }
+
+    if (1) {
+        lam_value expr = lam_parse(
+            "(begin"
+            " (define (area r) (* pi (* r r)))"
+            " (define r 10)"
+            " (print (let (r 20) (area r)) \"\\n\")"
+            " (print (area r) \"\\n\")"
+            ")");
+        lam_env* env = lam_make_env_builtin();
+        lam_value obj = lam_eval(expr, env);
+        assert(obj.dval == 0);
     }
 
     if (0) {
@@ -65,6 +104,7 @@ int main() {
             //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
+
     if (1) {
         lam_value expr = lam_parse(
             //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
@@ -104,6 +144,7 @@ int main() {
                 (print (test_two lfoo) "\n")
 
                 (define envp (begin (define a 10) (define b 20) (getenv)))
+                (print "Y " a b "\n")
                 (print "X " envp (eval qfoo envp))
 
                 303)

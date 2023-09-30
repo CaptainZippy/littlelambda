@@ -21,7 +21,8 @@ static T* callocPlus(size_t extra) {
 }
 
 // Parse null terminated input
-lam_value lam_parse(const char* input) {
+lam_value lam_parse(const char* input, const char** restart) {
+    *restart = input;
     std::vector<std::vector<lam_value>> stack;
     std::vector<lam_value>* curList{};
     for (const char* cur = input; *cur;) {
@@ -49,7 +50,7 @@ lam_value lam_parse(const char* input) {
                     while (is_white(*cur)) {
                         ++cur;
                     }
-                    assert(*cur == '\0');
+                    *restart = cur;
                     return l;
                 }
                 curList = &stack.back();
@@ -84,6 +85,7 @@ lam_value lam_parse(const char* input) {
                             if (curList) {
                                 curList->push_back(val);
                             } else {
+                                *restart = cur;
                                 return val;
                             }
                             done = true;
@@ -120,6 +122,7 @@ lam_value lam_parse(const char* input) {
                 if (curList) {
                     curList->push_back(val);
                 } else {
+                    *restart = cur;
                     return val;
                 }
                 break;
@@ -127,6 +130,13 @@ lam_value lam_parse(const char* input) {
         }
     }
     return {};
+}
+
+lam_value lam_parse(const char* input) {
+    const char* restart = nullptr;
+    auto r = lam_parse(input, &restart);
+    assert(*restart == 0);
+    return r;
 }
 
 lam_value lam_make_symbol(const char* s, size_t n) {
@@ -281,7 +291,7 @@ static bool truthy(lam_value v) {
     return false;
 }
 
-static void lam_print(lam_value val) {
+void lam_print(lam_value val) {
     switch (val.type()) {
         case lam_type::Double:
             printf("%lf", val.as_double());
@@ -438,7 +448,27 @@ lam_env* lam_make_env_builtin() {
             for (size_t i = 0; i < n - 1; ++i) {
                 lam_eval(a[i], env);
             }
-            return {a[n - 1], env};
+            return {a[n - 1], env};  // tail call
+        });
+    ret->add_operative(
+        "let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n >= 2);
+            lam_env* inner = inner = new lam_env(nullptr, 0, nullptr, 0, env, nullptr);
+            lam_list* locals = a[0].as_list();
+            assert(locals);
+            assert(locals->len % 2 == 0);
+            for (size_t i = 0; i < locals->len; i += 2) {
+                auto k = locals->at(i+0);
+                auto s = k.as_symbol();
+                assert(s);
+                auto v = lam_eval(locals->at(i + 1), inner);
+                inner->add_value(s->val(), v);
+            }
+
+            for (size_t i = 1; i < n - 1; ++i) {
+                lam_eval(a[i], env);
+            }
+            return {a[n - 1], inner};  // tail call
         });
     ret->add_applicative(
         "eval", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
