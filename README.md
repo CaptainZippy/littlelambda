@@ -9,3 +9,6 @@ Features:
 
 Missing features:
  * Garbage collection (but see littlegc)
+
+ [![CMake](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml)
+ [![CodeQL](https://github.com/CaptainZippy/littlelambda/actions/workflows/codeql.yml/badge.svg)](https://github.com/CaptainZippy/littlelambda/actions/workflows/codeql.yml)
