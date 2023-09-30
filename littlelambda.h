@@ -4,12 +4,14 @@
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
+extern void __debugbreak();  // Compiler Intrinsic
 #define assert2(COND)
 #define assert(COND)    \
     if (!(COND)) {      \
         __debugbreak(); \
     }
 
+/// Types a lam_value can contain.
 enum class lam_type {
     /*inline values*/
     Double,
@@ -35,6 +37,7 @@ struct lam_bigint;
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
 
+// Implementation detail of inlined lam_value
 enum lam_Magic : lam_u64 {
     // Anything other than 7ff8.... means the value is a non-nan double
     NormalNan = 0x7ff80000'00000000,  // 1000 - 'Normal' NaN prefix
@@ -45,12 +48,14 @@ enum lam_Magic : lam_u64 {
     TagInt = 0x7ffc0000'00000000,  // 1101 + 32 bit value
 };
 
+/// Base class of all heap allocated objects.
 struct lam_obj {
     // lgc_object_t gcobj{};
     lam_type type;
 };
 
-// 'Boxed' NaN tagged value
+/// 'Boxed' NaN tagged value.
+/// This either contains an double/integer or a pointer to a lam_obj derived object.
 union lam_value {
     lam_u64 uval;
     double dval;
@@ -120,6 +125,7 @@ using lam_invoke = lam_value_or_tail_call(lam_callable* callable,
                                           lam_value* a,
                                           size_t n);
 
+/// Variable length array
 struct lam_list : lam_obj {
     constexpr static const lam_type StaticType = lam_type::List;
     lam_u64 len;
@@ -132,17 +138,20 @@ struct lam_list : lam_obj {
     }
 };
 
+/// Function type. Either an applicative (evaluates arguments) or an operative (arguments are not
+/// implicilty evaluated)
 struct lam_callable : lam_obj {
     const char* name;
     lam_invoke* invoke;
     lam_env* env;
     lam_value body;
     size_t num_args;       // not including variadic
-    const char* variadic;  // if not null, bind extra arguments to this
+    const char* variadic;  // if not null, bind extra arguments to this name
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
 
+/// A symbol.
 struct lam_symbol : lam_obj {
     constexpr static const lam_type StaticType = lam_type::Symbol;
     lam_u64 len;
@@ -151,6 +160,7 @@ struct lam_symbol : lam_obj {
     // char name[cap]; // variable length
 };
 
+/// A UTF8 string.
 struct lam_string : lam_obj {
     constexpr static const lam_type StaticType = lam_type::String;
     lam_u64 len;
@@ -158,6 +168,7 @@ struct lam_string : lam_obj {
     // char name[len]; char zero{0}; // variable length
 };
 
+/// Arbitrary precision integer.
 struct lam_bigint : lam_obj {
     constexpr static const lam_type StaticType = lam_type::BigInt;
     mpz_t mp;  // TODO: flatten allocation in to the containing struct
@@ -191,9 +202,15 @@ static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }
 
-//
-
+/// Evaluate the given value in the given environment.
 lam_value lam_eval(lam_value val, lam_env* env);
-lam_value lam_parse(const char* input, const char** restart);
+
+/// Parse and return a single possibly-compound value from the given input.
 lam_value lam_parse(const char* input);
+
+/// Parse and return a single possibly-compound value from the given input.
+/// Sets the 'restart' pointer to the end of the input consumed.
+lam_value lam_parse(const char* input, const char** restart);
+
+/// Print the given value.
 void lam_print(lam_value val);
