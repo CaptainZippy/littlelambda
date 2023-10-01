@@ -168,6 +168,14 @@ lam_value lam_make_bigint(int i) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
+lam_value lam_make_error(unsigned code, const char* msg) {
+    auto* d = callocPlus<lam_error>(0);
+    d->type = lam_type::Error;
+    d->code = code;
+    d->msg = msg;
+    return {.uval = lam_u64(d) | lam_Magic::TagObj};
+}
+
 lam_value lam_make_bigint(mpz_t m) {
     auto* d = callocPlus<lam_bigint>(0);
     d->type = lam_type::BigInt;
@@ -773,7 +781,8 @@ lam_value lam_eval(lam_value val, lam_env* env) {
                     }
                     case lam_type::String:
                     case lam_type::Applicative:
-                    case lam_type::Operative: {
+                    case lam_type::Operative:
+                    case lam_type::Error: {
                         return lam_make_value(obj);
                     }
                     default: {

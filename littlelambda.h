@@ -34,15 +34,39 @@ enum class lam_type {
     Applicative,
     Operative,
     Environment,
+    Error,
 };
 
 struct lam_env;
 struct lam_obj;
-struct lam_symbol;
 struct lam_list;
+struct lam_error;
+struct lam_symbol;
 struct lam_string;
 struct lam_callable;
 struct lam_bigint;
+
+namespace lam_Detail {
+#define Type_Traits(X)                \
+    X(lam_bigint, lam_type::BigInt)   \
+    X(lam_string, lam_type::String)   \
+    X(lam_symbol, lam_type::Symbol)   \
+    X(lam_list, lam_type::List)       \
+    X(lam_env, lam_type::Environment) \
+    X(lam_error, lam_type::Error)
+
+template <typename T>
+struct TypeTrait;
+#define Declare_Trait(SYM, VAL)                           \
+    template <>                                           \
+    struct TypeTrait<SYM> {                               \
+        constexpr static const lam_type StaticType = VAL; \
+    };
+Type_Traits(Declare_Trait)
+#undef Declare_Trait
+#undef Type_Traits
+
+}  // namespace lam_Detail
 
 using lam_u64 = unsigned long long;
 using lam_u32 = unsigned long;
@@ -85,7 +109,7 @@ union lam_value {
     static ReqType* try_cast_obj(lam_u64 val) {
         assert((val & lam_Magic::Mask) == lam_Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(val & ~lam_Magic::Mask);
-        assert(obj->type == ReqType::StaticType);
+        assert(obj->type == lam_Detail::TypeTrait<ReqType>::StaticType);
         return reinterpret_cast<ReqType*>(obj);
     }
 
@@ -97,18 +121,15 @@ union lam_value {
 
     lam_bigint* as_bigint() const { return try_cast_obj<lam_bigint>(uval); }
 
+    lam_error* as_error() const { return try_cast_obj<lam_error>(uval); }
+
+    lam_env* as_env() const { return try_cast_obj<lam_env>(uval); }
+
     lam_callable* as_func() const {
         assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
         assert(obj->type == lam_type::Applicative || obj->type == lam_type::Operative);
         return reinterpret_cast<lam_callable*>(obj);
-    }
-
-    lam_env* as_env() const {
-        assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
-        lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
-        assert(obj->type == lam_type::Environment);
-        return reinterpret_cast<lam_env*>(obj);
     }
 
     lam_type type() const {
@@ -138,7 +159,6 @@ using lam_invoke = lam_value_or_tail_call(lam_callable* callable,
 
 /// Variable length array
 struct lam_list : lam_obj {
-    constexpr static const lam_type StaticType = lam_type::List;
     lam_u64 len;
     lam_u64 cap;
     // lam_value values[cap]; // variable length
@@ -164,7 +184,6 @@ struct lam_callable : lam_obj {
 
 /// A symbol.
 struct lam_symbol : lam_obj {
-    constexpr static const lam_type StaticType = lam_type::Symbol;
     lam_u64 len;
     lam_u64 cap;
     const char* val() const { return reinterpret_cast<const char*>(this + 1); }
@@ -173,7 +192,6 @@ struct lam_symbol : lam_obj {
 
 /// A UTF8 string.
 struct lam_string : lam_obj {
-    constexpr static const lam_type StaticType = lam_type::String;
     lam_u64 len;
     const char* val() const { return reinterpret_cast<const char*>(this + 1); }
     // char name[len]; char zero{0}; // variable length
@@ -181,9 +199,14 @@ struct lam_string : lam_obj {
 
 /// Arbitrary precision integer.
 struct lam_bigint : lam_obj {
-    constexpr static const lam_type StaticType = lam_type::BigInt;
     mpz_t mp;  // TODO: flatten allocation in to the containing struct
     char* str() { return mpz_get_str(nullptr, 10, mp); }  // TODO FREE
+};
+
+/// Error code and optional message.
+struct lam_error : lam_obj {
+    unsigned code;
+    const char* msg;
 };
 
 // Create values
@@ -197,6 +220,7 @@ static inline lam_value lam_make_int(int i) {
 lam_value lam_make_symbol(const char* s, size_t n = size_t(-1));
 lam_value lam_make_string(const char* s, size_t n = size_t(-1));
 lam_value lam_make_bigint(int i);
+lam_value lam_make_error(unsigned code, const char* msg);
 
 template <typename... Args>
 static inline lam_value lam_make_list_l(Args... args) {
