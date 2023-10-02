@@ -1,11 +1,20 @@
 #include "littlelambda.h"
+#include <cstring>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <cstring>
 
 #pragma warning(disable : 6011)  // Dereferencing NULL pointer 'pointer-name'.
+
+enum ErrorCode {
+    OK = 0,
+    ParseUnexpectedNull,
+    ParseUnexpectedEscape,
+    SymbolNotFound,
+    WrongNumberOfArguments,
+    NonNumericArguments,
+};
 
 static bool is_white(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
@@ -66,8 +75,8 @@ lam_value lam_parse(const char* input, const char** restart) {
                 while (!done) {
                     switch (char c = *cur++) {
                         case '0': {
-                            assert(false && "Unexpected end when parsing string");
-                            break;
+                            return lam_make_error(ParseUnexpectedNull,
+                                                  "Unexpected null when parsing string");
                         }
                         case '\\': {
                             if (*cur == 'n') {
@@ -76,7 +85,8 @@ lam_value lam_parse(const char* input, const char** restart) {
                                 cur += 1;
                                 start = cur;
                             } else {
-                                assert(false);  // TODO support more escapes
+                                return lam_make_error(ParseUnexpectedEscape,
+                                                      "Unexpected escape sequence");
                             }
                             break;
                         }
@@ -245,8 +255,7 @@ struct lam_env : lam_obj {
         if (_parent) {
             return _parent->lookup(sym);
         }
-        assert(0 && "symbol not found");
-        return {};
+        return lam_make_error(SymbolNotFound, "symbol not found");
     }
 
     void insert(const char* sym, lam_value value) {
@@ -400,7 +409,9 @@ lam_env* lam_make_env_builtin() {
 
     ret->add_operative(
         "lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
-            assert(n == 2 && "wrong number of parameters to lambda");
+            if (n != 2) {
+                return lam_make_error(WrongNumberOfArguments, "(lambda args body)");
+            }
             auto lhs = a[0];
             auto rhs = a[1];
             size_t numArgs{0};
@@ -467,7 +478,7 @@ lam_env* lam_make_env_builtin() {
             assert(locals);
             assert(locals->len % 2 == 0);
             for (size_t i = 0; i < locals->len; i += 2) {
-                auto k = locals->at(i+0);
+                auto k = locals->at(i + 0);
                 auto s = k.as_symbol();
                 assert(s);
                 auto v = lam_eval(locals->at(i + 1), inner);
@@ -487,8 +498,7 @@ lam_env* lam_make_env_builtin() {
                 case 2:
                     return lam_eval(a[0], a[1].as_env());
                 default:
-                    assert(false && "1 or 2 args needed for eval");
-                    return lam_value{};
+                    return lam_make_error(WrongNumberOfArguments, "(eval expr) or (eval expr env)");
             }
         });
     ret->add_applicative(
