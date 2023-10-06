@@ -24,6 +24,7 @@ extern void __debugbreak();  // Compiler Intrinsic
 /// Types a lam_value can contain.
 enum class lam_type {
     /*inline values*/
+    Null,
     Double,
     Int,
     /*heap objects*/
@@ -77,9 +78,13 @@ enum lam_Magic : lam_u64 {
     NormalNan = 0x7ff80000'00000000,  // 1000 - 'Normal' NaN prefix
     TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values
 
-    Mask = 0x7fff0000'00000000,    // 1111
-    TagObj = 0x7ffd0000'00000000,  // 1100 + 48 bit pointer to lam_obj
-    TagInt = 0x7ffc0000'00000000,  // 1101 + 32 bit value
+    Mask = 0x7fff0000'00000000,      // 1111
+    TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit value
+    TagObj = 0x7ffd0000'00000000,    // 1101 + 48 bit pointer to lam_obj
+    TagConst = 0x7ffe0000'00000000,  // 1110 + lower bits indicate which constant: null, true, false
+    //Tag 1111 available
+
+    ValueConstNull = TagConst | 2,
 };
 
 /// Base class of all heap allocated objects.
@@ -140,6 +145,8 @@ union lam_value {
             }
             case TagInt:
                 return lam_type::Int;
+            case TagConst:
+                return lam_type::Null;
             default:
                 return lam_type::Double;
         }
@@ -216,6 +223,9 @@ static inline lam_value lam_make_double(double d) {
 }
 static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | lam_Magic::TagInt};
+}
+static inline lam_value lam_make_null() {
+    return {.uval = lam_Magic::ValueConstNull };
 }
 lam_value lam_make_symbol(const char* s, size_t n = size_t(-1));
 lam_value lam_make_string(const char* s, size_t n = size_t(-1));

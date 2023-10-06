@@ -140,7 +140,7 @@ lam_value lam_parse(const char* input, const char** restart) {
             }
         }
     }
-    return {};
+    return lam_make_null();
 }
 
 lam_value lam_parse(const char* input) {
@@ -317,6 +317,9 @@ void lam_print(lam_value val) {
         case lam_type::Int:
             printf("%i", val.as_int());
             break;
+        case lam_type::Null:
+            printf("null");
+            break;
         case lam_type::Symbol:
             printf(":%s", val.as_symbol()->val());
             break;
@@ -360,7 +363,7 @@ lam_value lam_eval_call(lam_callable* call, lam_env* env, lam_value* args, size_
 static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
     assert(xt <= lam_type::BigInt);
     assert(yt <= lam_type::BigInt);
-    assert(int(lam_type::BigInt) <= 2);
+    static_assert(int(lam_type::BigInt) <= 3);
     return (int(xt) << 2) | int(yt);
 }
 
@@ -748,6 +751,7 @@ lam_env* lam_make_env_builtin() {
             return lam_make_int(c);
         });
     ret->add_value("pi", lam_make_double(3.14159));
+    ret->add_value("null", lam_make_null());
     return ret;
 }
 
@@ -802,6 +806,7 @@ lam_value lam_eval(lam_value val, lam_env* env) {
                 }
                 break;
             }
+            case lam_Magic::TagConst:
             case lam_Magic::TagInt:
                 return val;
             default:  // double

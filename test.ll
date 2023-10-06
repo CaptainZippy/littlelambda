@@ -1,3 +1,6 @@
+(print null "\n")
+(define n2 null)
+(print n2 "\n")
 (define r 10)
 (define r_a (let (a 11
                   x 10

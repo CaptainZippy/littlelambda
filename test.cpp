@@ -37,6 +37,7 @@ int main() {
         lam_parse("(hello world)");
         lam_parse("(hello (* num 141.0) world)");
         lam_parse("(begin (define r 10) (* pi (* r r)))");
+        lam_parse("(begin (define r null) (print r))");
     }
 
     if (0) {
