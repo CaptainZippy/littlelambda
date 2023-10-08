@@ -1,21 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-<Type Name="lam_obj">
-  <DisplayString Condition="type==2">Symbol={(char*)(((lam_sym*)this)+1)}</DisplayString>
-  <DisplayString Condition="type==3">List size={((lam_list*)this)-&gt;len}</DisplayString>
-  <DisplayString Condition="type==4">Lambda</DisplayString>
-  <DisplayString Condition="type==5 || type==6">Callable {((lam_func*)this)-&gt;name}</DisplayString>
-  <DisplayString>[TODO] type={type}</DisplayString>
-  <Expand>
-    <ArrayItems Condition="type==3">
+  <Type Name="lam_obj">
+    <DisplayString Condition="type==4">String={(char*)(((lam_string*)this)+1)}</DisplayString>
+    <DisplayString Condition="type==5">Symbol={(char*)(((lam_symbol*)this)+1)}</DisplayString>
+    <DisplayString Condition="type==6">List size={((lam_list*)this)-&gt;len}</DisplayString>
+    <DisplayString Condition="type==5 || type==6">Callable {((lam_callable*)this)-&gt;name}</DisplayString>
+    <DisplayString Condition="type==9">Env {((lam_env*)this)-&gt;_name}</DisplayString>
+    <DisplayString>[FIXME] type={type}</DisplayString>
+    <Expand>
+      <ArrayItems Condition="type==6">
         <Size>((lam_list*)this)-&gt;len</Size>
         <ValuePointer>(lam_value*)(((lam_list*)this)+1)</ValuePointer>
-    </ArrayItems>
-  </Expand>
-</Type>
-<Type Name="lam_value">
-  <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7fff000000000000">{(lam_obj*)(uval &amp; 0xffffffffffff)}</DisplayString>
-  <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ffd000000000000">{(int)(unsigned)uval}</DisplayString>
-  <DisplayString>{dval}</DisplayString>
-</Type>
+      </ArrayItems>
+      <ExpandedItem Condition="type==9">((lam_env*)this)->_parent</ExpandedItem>
+      <ExpandedItem Condition="type==9">((lam_env*)this)->_map</ExpandedItem>
+    </Expand>
+  </Type>
+  <Type Name="lam_value">
+    <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ff8000000000000">{dval}</DisplayString>
+    <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ffc000000000000">{(int)(unsigned)uval}</DisplayString>
+    <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ffd000000000000">{(lam_obj*)(uval &amp; 0xffffffffffff)}</DisplayString>
+    <DisplayString>FIXME</DisplayString>
+    <Expand>
+      <ExpandedItem>*(lam_obj*)(uval &amp; 0xffffffffffff)</ExpandedItem>
+    </Expand>
+  </Type>
 </AutoVisualizer>
