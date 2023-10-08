@@ -1,6 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include <vector>
 #include <cstdio>
+#include <vector>
 #include "littlelambda.h"
 
 int slurp(const char* path, std::vector<char>& buf) {
@@ -18,10 +18,12 @@ int slurp(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-int main() {
+void read_and_eval(const char* path, lam_env* env) {
     std::vector<char> buf;
-    if (slurp("test.ll", buf) == 0) {
-        lam_env* env = lam_make_env_builtin();
+    if (slurp(path, buf) == 0) {
+        if (env == nullptr) {
+            env = lam_make_env_builtin();
+        }
         for (const char* cur = buf.data(); *cur;) {
             const char* next = nullptr;
             lam_value expr = lam_parse(cur, &next);
@@ -29,6 +31,11 @@ int main() {
             lam_value obj = lam_eval(expr, env);
         }
     }
+}
+
+int main() {
+    read_and_eval("module.ll", nullptr);
+    read_and_eval("test.ll", nullptr);
     if (1) {
         lam_parse("hello");
         lam_parse("\"world\"");

@@ -204,7 +204,8 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
 }
 
 struct lam_env : lam_obj {
-    lam_env(lam_env* parent) : lam_obj(lam_type::Environment), _parent(parent) {}
+    lam_env(lam_env* parent, const char* name)
+        : lam_obj(lam_type::Environment), _parent{parent}, _name{name} {}
 
     lam_env(const char* keys[],
             size_t nkeys,
@@ -247,16 +248,43 @@ struct lam_env : lam_obj {
         _map.emplace(name, v);
     }
 
-    lam_value lookup(const char* sym) {
-        auto it = _map.find(sym);
-        if (it != _map.end()) {
-            return it->second;
+    // symStr is a possibly-dotted identifier
+    static lam_value _lookup(const char* symStr, lam_env* startEnv) {
+        std::string_view todo{symStr};
+        lam_env* env = startEnv;
+        while (1) {
+            // Extract 'cur' - the next segment of the dotted path
+            auto dot = todo.find('.', 0);
+            std::string_view cur = todo;
+            if (dot != std::string::npos) {
+                cur = cur.substr(0, dot);
+                todo.remove_prefix(dot + 1);
+            } else {  // end of path
+                todo = {};
+            }
+
+            // Look up 'cur', return it if it's the last segment.
+            // Otherwise update 'env' and loop for next segment.
+            for (auto e = env;;) {
+                auto it = e->_map.find(cur);
+                if (it != e->_map.end()) {
+                    lam_value v = it->second;
+                    if (todo.empty()) {  // we're at the last dotted id
+                        return v;
+                    } else {  // go to next dot
+                        env = v.as_env();
+                        break;  // to outer loop
+                    }
+                }
+                if (auto p = e->_parent) {
+                    e = e->_parent;
+                } else {
+                    return lam_make_error(SymbolNotFound, "symbol not found");
+                }
+            }
         }
-        if (_parent) {
-            return _parent->lookup(sym);
-        }
-        return lam_make_error(SymbolNotFound, "symbol not found");
     }
+    lam_value lookup(const char* sym) { return _lookup(sym, this); }
 
     void insert(const char* sym, lam_value value) {
         auto pair = _map.emplace(sym, value);
@@ -282,8 +310,21 @@ struct lam_env : lam_obj {
     }
 
    protected:
-    std::unordered_map<std::string, lam_value> _map;
+    struct string_hash {
+        using is_transparent = void;
+        [[nodiscard]] size_t operator()(const char* txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(std::string_view txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(const std::string& txt) const {
+            return std::hash<std::string>{}(txt);
+        }
+    };
+    std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
     lam_env* _parent{nullptr};
+    const char* _name{nullptr};
 };
 
 static lam_value_or_tail_call lam_invokelambda(lam_callable* call,
@@ -368,7 +409,7 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
 }
 
 lam_env* lam_make_env_builtin() {
-    lam_env* ret = new lam_env(nullptr);
+    lam_env* ret = new lam_env(nullptr, "builtin");
     ret->add_operative(
         "define", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -459,6 +500,18 @@ lam_env* lam_make_env_builtin() {
                 assert(false);
                 return lam_make_double(0);
             }
+        });
+    ret->add_operative(
+        "module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n >= 1);
+            auto modname = a[0].as_symbol();
+            lam_env* inner = inner = new lam_env(env, modname->val());
+            lam_value r = lam_make_null();
+            for (size_t i = 1; i < n; i += 1) {
+                r = lam_eval(a[i], inner);
+            }
+            env->insert(modname->val(), lam_make_value(inner));
+            return r;
         });
     ret->add_operative(
         "quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {

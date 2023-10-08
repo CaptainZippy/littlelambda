@@ -24,18 +24,18 @@ extern void __debugbreak();  // Compiler Intrinsic
 /// Types a lam_value can contain.
 enum class lam_type {
     /*inline values*/
-    Null,
-    Double,
-    Int,
+    Null,    // 0
+    Double,  // 1
+    Int,     // 2
     /*heap objects*/
-    BigInt,
-    String,
-    Symbol,
-    List,
-    Applicative,
-    Operative,
-    Environment,
-    Error,
+    BigInt,       // 3
+    String,       // 4
+    Symbol,       // 5
+    List,         // 6
+    Applicative,  // 7
+    Operative,    // 8
+    Environment,  // 9
+    Error,        // 10
 };
 
 struct lam_env;
@@ -82,7 +82,7 @@ enum lam_Magic : lam_u64 {
     TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit value
     TagObj = 0x7ffd0000'00000000,    // 1101 + 48 bit pointer to lam_obj
     TagConst = 0x7ffe0000'00000000,  // 1110 + lower bits indicate which constant: null, true, false
-    //Tag 1111 available
+    // Tag 1111 available
 
     ValueConstNull = TagConst | 2,
 };
@@ -225,7 +225,7 @@ static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | lam_Magic::TagInt};
 }
 static inline lam_value lam_make_null() {
-    return {.uval = lam_Magic::ValueConstNull };
+    return {.uval = lam_Magic::ValueConstNull};
 }
 lam_value lam_make_symbol(const char* s, size_t n = size_t(-1));
 lam_value lam_make_string(const char* s, size_t n = size_t(-1));
