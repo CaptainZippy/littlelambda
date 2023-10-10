@@ -2,7 +2,16 @@ cmake_minimum_required(VERSION 3.24)
 project(littlelambda)
 set(CMAKE_CXX_STANDARD 20)
 
-set(SRCS test.cpp littlelambda.cpp littlelambda.h mini-gmp.h mini-gmp.c README.md)
+set(SRCS
+    README.md
+    src/test.cpp
+    src/littlelambda.cpp
+    src/littlelambda.h
+    src/mini-gmp.h
+    src/mini-gmp.c
+    test/module.ll
+    test/test.ll)
+
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRCS})
 add_executable (littlelambda ${SRCS})
 

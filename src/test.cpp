@@ -34,8 +34,8 @@ void read_and_eval(const char* path, lam_env* env) {
 }
 
 int main() {
-    read_and_eval("module.ll", nullptr);
-    read_and_eval("test.ll", nullptr);
+    read_and_eval("test/module.ll", nullptr);
+    read_and_eval("test/test.ll", nullptr);
     if (1) {
         lam_parse("hello");
         lam_parse("\"world\"");
