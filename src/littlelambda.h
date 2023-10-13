@@ -185,6 +185,7 @@ struct lam_callable : lam_obj {
     lam_value body;
     size_t num_args;       // not including variadic
     const char* variadic;  // if not null, bind extra arguments to this name
+    const void* context;   // extra data
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
@@ -242,7 +243,12 @@ lam_value lam_make_list_v(const lam_value* values, size_t N);
 
 lam_value lam_make_env(lam_env* parent);
 
-lam_env* lam_make_env_builtin();
+struct lam_hooks {
+    using import_func = lam_value(const char*);
+    import_func* import;
+};
+
+lam_env* lam_make_env_builtin(lam_hooks* hooks=nullptr);
 static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }

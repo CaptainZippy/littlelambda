@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <cstdio>
 #include <vector>
+#include <string>
 #include "littlelambda.h"
 
 int slurp(const char* path, std::vector<char>& buf) {
@@ -18,24 +19,40 @@ int slurp(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-void read_and_eval(const char* path, lam_env* env) {
+static lam_value read_and_eval(const char* path);
+
+lam_env* lam_make_env_default() {
+    static lam_hooks hooks{[](const char* p) {
+        auto p2 = std::string{p} + ".ll";
+        return read_and_eval(p2.c_str());
+    }};
+    return lam_make_env_builtin(&hooks);
+}
+
+lam_value read_and_eval(const char* path) {
     std::vector<char> buf;
     if (slurp(path, buf) == 0) {
-        if (env == nullptr) {
-            env = lam_make_env_builtin();
-        }
+        auto env = lam_make_env_default();
+
         for (const char* cur = buf.data(); *cur;) {
             const char* next = nullptr;
             lam_value expr = lam_parse(cur, &next);
             cur = next;
             lam_value obj = lam_eval(expr, env);
         }
+        return lam_make_value(reinterpret_cast<lam_obj*>(env));
     }
+    return lam_make_error(1, "module not found");
 }
 
+static lam_hooks hooks{[](const char* p) {
+    auto p2 = std::string{p} + ".ll";
+    return read_and_eval(p2.c_str());
+}};
+
 int main() {
-    read_and_eval("test/module.ll", nullptr);
-    read_and_eval("test/test.ll", nullptr);
+    read_and_eval("module.ll");
+    read_and_eval("test.ll");
     if (1) {
         lam_parse("hello");
         lam_parse("\"world\"");
@@ -43,13 +60,13 @@ int main() {
         lam_parse("12.2");
         lam_parse("(hello world)");
         lam_parse("(hello (* num 141.0) world)");
-        lam_parse("(begin (define r 10) (* pi (* r r)))");
+        lam_parse("(begin (define r 10) (* 3.4 (* r r)))");
         lam_parse("(begin (define r null) (print r))");
     }
 
     if (0) {
-        lam_value expr = lam_parse("(begin (define r 10) (* pi (* r r)))");
-        lam_env* env = lam_make_env_builtin();
+        lam_value expr = lam_parse("(begin (define r 10) (* 3.1 (* r r)))");
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
     }
@@ -57,21 +74,27 @@ int main() {
     if (1) {
         lam_value expr = lam_parse(
             "(begin"
-            " (define (area r) (* pi (* r r)))"
+            " (import math)"
+            " (define (area r) (* math.pi (* r r)))"
             " (define r 10)"
             " (print (let (r 20) (area r)) \"\\n\")"
             " (print (area r) \"\\n\")"
             ")");
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval == 0);
     }
 
     if (0) {
         lam_value expr =
-            lam_parse("(begin (define (circle-area r) (* pi (* r r))) (circle-area 3))");
+            lam_parse(
+                "(begin"
+                " (import math)"
+                " (define (circle-area r) (* pi (* r r)))"
+                " (circle-area 3)"
+                ")");
 
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 9 * 3.1);
         assert(obj.dval < 9 * 3.2);
@@ -83,7 +106,7 @@ int main() {
             "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
             "   (fact (bigint 35)))");
 
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         for (int i = 0; i < 1; ++i) {
             lam_value obj = lam_eval(expr, env);
             assert(obj.type() == lam_type::BigInt);
@@ -98,7 +121,7 @@ int main() {
             "   (define repeat (lambda (f) (lambda (x) (f (f x)))))"
             "   ((repeat twice) 10)"
             ")");
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 40);
 
@@ -130,7 +153,7 @@ int main() {
             //"    (mapreduce (curry equal? item)"
             "             + L))"
             "  (count 0 (list 0 1 2 0 3 0 0)))");
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 4);
     }
@@ -158,7 +181,7 @@ int main() {
 
                 303)
             )---");
-        lam_env* env = lam_make_env_builtin();
+        lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 303);
     }

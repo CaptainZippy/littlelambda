@@ -220,7 +220,7 @@ struct lam_env : lam_obj {
         }
         if (variadic) {
             lam_value kw = lam_make_list_v(values + nkeys, nvalues - nkeys);
-            add_value(keys[nkeys - 1], kw);
+            add_value(variadic, kw);
         }
     }
 
@@ -233,10 +233,11 @@ struct lam_env : lam_obj {
         d->env = nullptr;
         d->body = {};
         d->num_args = 0;
+        d->context = nullptr;
         lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
         _map.emplace(name, v);
     }
-    void add_operative(const char* name, lam_invoke b) {
+    void add_operative(const char* name, lam_invoke b, const void* context = nullptr) {
         auto* d = callocPlus<lam_callable>(0);
         d->type = lam_type::Operative;
         d->name = name;
@@ -244,6 +245,7 @@ struct lam_env : lam_obj {
         d->env = nullptr;
         d->body = {};
         d->num_args = 0;
+        d->context = context;
         lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
         _map.emplace(name, v);
     }
@@ -408,8 +410,24 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
     return (int(xt) << 2) | int(yt);
 }
 
-lam_env* lam_make_env_builtin() {
+lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     lam_env* ret = new lam_env(nullptr, "builtin");
+    if (hooks) {
+        lam_env* _hooks = new lam_env(nullptr, "_hooks");
+        if (hooks->import) {
+            _hooks->add_operative(
+                "_import",
+                [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+                    assert(n == 1);
+                    auto modname = a[0].as_symbol();
+                    auto h = static_cast<const lam_hooks*>(call->context);
+                    return h->import(modname->val());
+                },
+                hooks);
+        }
+        ret->add_value("_hooks", lam_make_value(_hooks));
+    }
+
     ret->add_operative(
         "define", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -505,13 +523,23 @@ lam_env* lam_make_env_builtin() {
         "module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
-            lam_env* inner = inner = new lam_env(env, modname->val());
+            lam_env* inner = new lam_env(env, modname->val());
             lam_value r = lam_make_null();
             for (size_t i = 1; i < n; i += 1) {
                 r = lam_eval(a[i], inner);
             }
             env->insert(modname->val(), lam_make_value(inner));
             return r;
+        });
+    ret->add_operative(
+        "import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+            assert(n == 1);
+            auto modname = a[0].as_symbol();
+            lam_value imp = env->lookup("_hooks._import");
+            lam_callable* func = imp.as_func();
+            lam_value result = lam_eval_call(func, nullptr, a, 1);
+            env->insert(modname->val(), result);
+            return result;
         });
     ret->add_operative(
         "quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -803,7 +831,6 @@ lam_env* lam_make_env_builtin() {
             }
             return lam_make_int(c);
         });
-    ret->add_value("pi", lam_make_double(3.14159));
     ret->add_value("null", lam_make_null());
     return ret;
 }
