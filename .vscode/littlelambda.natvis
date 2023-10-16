@@ -20,6 +20,9 @@
     <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ff8000000000000">{dval}</DisplayString>
     <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ffc000000000000">{(int)(unsigned)uval}</DisplayString>
     <DisplayString Condition="(uval &amp; 0x7fff000000000000)==0x7ffd000000000000">{(lam_obj*)(uval &amp; 0xffffffffffff)}</DisplayString>
+    <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==0)">false_value</DisplayString>
+    <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==1)">true_value</DisplayString>
+    <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==2)">null_value</DisplayString>
     <DisplayString>FIXME</DisplayString>
     <Expand>
       <ExpandedItem>*(lam_obj*)(uval &amp; 0xffffffffffff)</ExpandedItem>

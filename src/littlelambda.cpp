@@ -10,6 +10,7 @@
 enum ErrorCode {
     OK = 0,
     ParseUnexpectedNull,
+    ParseUnexpectedSemiColon,
     ParseUnexpectedEscape,
     SymbolNotFound,
     WrongNumberOfArguments,
@@ -21,6 +22,9 @@ static bool is_white(char c) {
 }
 static bool is_word_boundary(char c) {
     return is_white(c) || c == '(' || c == ')' || c == '\0';
+}
+static bool is_newline(char c) {
+    return c == '\r' || c == '\n';
 }
 
 // Allocate and zero "sizeof(T) + extra" bytes
@@ -35,9 +39,13 @@ lam_value lam_parse(const char* input, const char** restart) {
     *restart = input;
     std::vector<std::vector<lam_value>> stack;
     std::vector<lam_value>* curList{};
-    for (const char* cur = input; *cur;) {
+    for (const char* cur = input; true;) {
         const char* start = cur;
         switch (*cur++) {
+            case '\0': {
+                *restart = cur - 1;
+                return lam_make_null();
+            }
             case ' ':
             case '\t':
             case '\r':
@@ -47,7 +55,20 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 break;
             }
-
+            case ';': {  // ";;" to eol is comment
+                if (*cur != ';') {
+                    return lam_make_error(ParseUnexpectedSemiColon, "Unexpected single ';'");
+                }
+                // Look for the start of any newline sequence \r, \n, \r\n
+                while (*cur && !is_newline(*cur)) {
+                    ++cur;
+                }
+                // Consume any sequence of \r,\n
+                while (*cur && is_newline(*cur)) {
+                    ++cur;
+                }
+                break;
+            }
             case '(': {
                 stack.emplace_back();
                 curList = &stack.back();
@@ -140,7 +161,6 @@ lam_value lam_parse(const char* input, const char** restart) {
             }
         }
     }
-    return lam_make_null();
 }
 
 lam_value lam_parse(const char* input) {

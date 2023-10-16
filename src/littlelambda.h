@@ -248,7 +248,7 @@ struct lam_hooks {
     import_func* import;
 };
 
-lam_env* lam_make_env_builtin(lam_hooks* hooks=nullptr);
+lam_env* lam_make_env_builtin(lam_hooks* hooks = nullptr);
 static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }
