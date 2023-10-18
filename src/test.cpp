@@ -1,10 +1,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <cstdio>
-#include <vector>
 #include <string>
+#include <vector>
 #include "littlelambda.h"
 
-int slurp(const char* path, std::vector<char>& buf) {
+static int slurp_file(const char* path, std::vector<char>& buf) {
     buf.clear();
     FILE* fin = fopen(path, "rb");
     if (fin == nullptr) {
@@ -30,8 +30,9 @@ lam_env* lam_make_env_default() {
 }
 
 lam_value read_and_eval(const char* path) {
+    // TODO: accept path of loading module, accept environment, split out finding module
     std::vector<char> buf;
-    if (slurp(path, buf) == 0) {
+    if (slurp_file(path, buf) == 0) {
         auto env = lam_make_env_default();
 
         for (const char* cur = buf.data(); *cur;) {
@@ -64,6 +65,7 @@ int main() {
         lam_parse("(begin (define r null) (print r))");
     }
 
+    read_and_eval("01-Basic.ll");
     if (0) {
         lam_value expr = lam_parse("(begin (define r 10) (* 3.1 (* r r)))");
         lam_env* env = lam_make_env_default();
@@ -86,13 +88,12 @@ int main() {
     }
 
     if (0) {
-        lam_value expr =
-            lam_parse(
-                "(begin"
-                " (import math)"
-                " (define (circle-area r) (* pi (* r r)))"
-                " (circle-area 3)"
-                ")");
+        lam_value expr = lam_parse(
+            "(begin"
+            " (import math)"
+            " (define (circle-area r) (* pi (* r r)))"
+            " (circle-area 3)"
+            ")");
 
         lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);

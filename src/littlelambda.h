@@ -184,6 +184,7 @@ struct lam_callable : lam_obj {
     lam_env* env;
     lam_value body;
     size_t num_args;       // not including variadic
+    const char* envsym;    // only for operatives, name to which we bind environment
     const char* variadic;  // if not null, bind extra arguments to this name
     const void* context;   // extra data
     // char name[num_args]; // variable length

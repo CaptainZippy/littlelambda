@@ -12,6 +12,7 @@ enum ErrorCode {
     ParseUnexpectedNull,
     ParseUnexpectedSemiColon,
     ParseUnexpectedEscape,
+    ParseMissingSymbolName,
     SymbolNotFound,
     WrongNumberOfArguments,
     NonNumericArguments,
@@ -95,7 +96,7 @@ lam_value lam_parse(const char* input, const char** restart) {
                 bool done = false;
                 while (!done) {
                     switch (char c = *cur++) {
-                        case '0': {
+                        case 0: {
                             return lam_make_error(ParseUnexpectedNull,
                                                   "Unexpected null when parsing string");
                         }
@@ -129,6 +130,23 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 break;
             }
+
+            //    // keyword
+            //case ':': {
+            //    while (!is_word_boundary(*cur)) {
+            //        ++cur;
+            //    }
+            //    lam_value val = (cur - start > 1) ? lam_make_symbol(start + 1, cur - start - 1)
+            //                                      : lam_make_error(ParseMissingSymbolName,
+            //                                                       "Missing symbol name after ':'");
+            //    if (curList) {
+            //        curList->push_back(val);
+            //    } else {
+            //        *restart = cur;
+            //        return val;
+            //    }
+            //    break;
+            //}
 
             default: {
                 while (!is_word_boundary(*cur)) {
@@ -349,12 +367,24 @@ struct lam_env : lam_obj {
     const char* _name{nullptr};
 };
 
-static lam_value_or_tail_call lam_invokelambda(lam_callable* call,
+static lam_value_or_tail_call invoke_applicative(lam_callable* call,
+                                                 lam_env* env,
+                                                 lam_value* args,
+                                                 auto narg) {
+    assert(call->envsym == nullptr);
+    lam_env* inner = inner = new lam_env((const char**)call->args(), call->num_args, args, narg,
+                                         call->env, call->variadic);
+    return {call->body, inner};
+}
+
+static lam_value_or_tail_call invoke_operative(lam_callable* call,
                                                lam_env* env,
                                                lam_value* args,
                                                auto narg) {
     lam_env* inner = inner = new lam_env((const char**)call->args(), call->num_args, args, narg,
                                          call->env, call->variadic);
+    assert(call->envsym);
+    inner->add_value(call->envsym, lam_make_value(env));
     return {call->body, inner};
 }
 
@@ -449,37 +479,52 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     }
 
     ret->add_operative(
-        "define", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
-            assert(n == 2);
-            auto lhs = a[0];
-            auto rhs = a[1];
-            if (lhs.type() == lam_type::Symbol) {
+        "define",
+        [](lam_callable* call, lam_env* env, auto callArgs,
+           auto numCallArgs) -> lam_value_or_tail_call {
+            assert(numCallArgs >= 2);
+            auto lhs = callArgs[0];
+            if (lhs.type() == lam_type::Symbol) {  // (define sym value)
+                assert(numCallArgs == 2);
                 auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~lam_Magic::Mask);
-                auto r = lam_eval(rhs, env);
+                auto r = lam_eval(callArgs[1], env);
                 env->insert(sym->val(), r);
-            } else if (lhs.type() == lam_type::List) {
+            } else if (lhs.type() == lam_type::List) {  // (define (applicative ...) body) or
+                                                        // (define ($operative ...) env body)
                 auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~lam_Magic::Mask);
-                std::span<lam_value> args{argsList->first() + 1,
-                                          argsList->len - 1};  // drop sym from args list
+                const char* name = argsList->at(0).as_symbol()->val();
+                std::span<lam_value> fnargs{argsList->first() + 1,
+                                            argsList->len - 1};  // drop sym from args list
                 const char* variadic{nullptr};
 
-                if (args.size() >= 2 && args[args.size() - 2].as_symbol()->val()[0] == '.') {
-                    variadic = args[args.size() - 1].as_symbol()->val();
-                    args = args.subspan(0, args.size() - 2);
+                // variadic?
+                if (fnargs.size() >= 2 && fnargs[fnargs.size() - 2].as_symbol()->val()[0] == '.') {
+                    variadic = fnargs[fnargs.size() - 1].as_symbol()->val();
+                    fnargs = fnargs.subspan(0, fnargs.size() - 2);
                 }
                 auto func =
-                    callocPlus<lam_callable>(args.size() * sizeof(char*));  // TODO intern names
-                const char* name = argsList->at(0).as_symbol()->val();
-                func->type = lam_type::Applicative;
-                func->invoke = &lam_invokelambda;
+                    callocPlus<lam_callable>(fnargs.size() * sizeof(char*));  // TODO intern names
+                bool operative = name[0] == '$';
+                if (operative) {
+                    assert(numCallArgs == 3);
+                    func->type = lam_type::Operative;
+                    func->invoke = &invoke_operative;
+                    func->body = callArgs[2];
+                    func->envsym = callArgs[1].as_symbol()->val();
+                } else {
+                    assert(numCallArgs == 2);
+                    func->type = operative ? lam_type::Operative : lam_type::Applicative;
+                    func->invoke = &invoke_applicative;
+                    func->body = callArgs[1];
+                    func->envsym = nullptr;
+                }
                 func->name = name;
                 func->env = env;
-                func->body = rhs;
-                func->num_args = args.size();
+                func->num_args = fnargs.size();
                 func->variadic = variadic;
                 char** names = func->args();
-                for (size_t i = 0; i < args.size(); ++i) {
-                    names[i] = const_cast<char*>(args[i].as_symbol()->val());
+                for (size_t i = 0; i < fnargs.size(); ++i) {
+                    names[i] = const_cast<char*>(fnargs[i].as_symbol()->val());
                 }
                 lam_value y = {.uval = lam_u64(func) | lam_Magic::TagObj};
                 env->insert(name, y);
@@ -510,7 +555,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
             auto func = callocPlus<lam_callable>(numArgs * sizeof(char*));  // TODO intern names
             func->type = lam_type::Applicative;
-            func->invoke = &lam_invokelambda;
+            func->invoke = &invoke_applicative;
             func->name = "lambda";
             func->env = env;
             func->body = rhs;
