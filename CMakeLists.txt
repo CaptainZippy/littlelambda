@@ -22,5 +22,7 @@ if(MSVC)
 endif()
 
 enable_testing()
-add_test(NAME Simple COMMAND $<TARGET_FILE:littlelambda>)
+add_test(NAME Simple
+    COMMAND $<TARGET_FILE:littlelambda>
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
 
