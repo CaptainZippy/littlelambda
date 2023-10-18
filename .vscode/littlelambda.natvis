@@ -4,8 +4,10 @@
     <DisplayString Condition="type==4">String={(char*)(((lam_string*)this)+1)}</DisplayString>
     <DisplayString Condition="type==5">Symbol={(char*)(((lam_symbol*)this)+1)}</DisplayString>
     <DisplayString Condition="type==6">List size={((lam_list*)this)-&gt;len}</DisplayString>
-    <DisplayString Condition="type==5 || type==6">Callable {((lam_callable*)this)-&gt;name}</DisplayString>
+    <DisplayString Condition="type==7">Applicative {((lam_callable*)this)-&gt;name}</DisplayString>
+    <DisplayString Condition="type==8">Operative {((lam_callable*)this)-&gt;name}</DisplayString>
     <DisplayString Condition="type==9">Env {((lam_env*)this)-&gt;_name}</DisplayString>
+    <DisplayString Condition="type==10">Error {((lam_error*)this)-&gt;code,x} {((lam_error*)this)-&gt;msg}</DisplayString>
     <DisplayString>[FIXME] type={type}</DisplayString>
     <Expand>
       <ArrayItems Condition="type==6">
