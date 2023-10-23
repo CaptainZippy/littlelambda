@@ -130,6 +130,19 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 break;
             }
+            case '\'': {
+                const char* after = nullptr;
+                lam_value quoted = lam_parse(cur, &after);
+                lam_value val = lam_make_list_l(lam_make_symbol("quote"), quoted);
+                cur = after;
+                if (curList) {
+                    curList->push_back(val);
+                } else {
+                    *restart = cur;
+                    return val;
+                }
+                break;
+            }
 
             //    // keyword
             //case ':': {
@@ -432,13 +445,16 @@ void lam_print(lam_value val) {
             break;
         }
         case lam_type::Applicative:
-            printf("A{%s}", val.as_func()->name);
+            printf("Ap{%s}", val.as_func()->name);
             break;
         case lam_type::Operative:
-            printf("O{%s}", val.as_func()->name);
+            printf("Op{%s}", val.as_func()->name);
             break;
         case lam_type::Environment:
-            printf("E{%p}", val.as_env());
+            printf("Env{%p}", val.as_env());
+            break;
+        case lam_type::Error:
+            printf("Err{%x,%s}", val.as_error()->code, val.as_error()->msg);
             break;
         default:
             assert(false);
