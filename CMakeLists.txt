@@ -10,14 +10,15 @@ set(SRCS
     src/mini-gmp.h
     src/mini-gmp.c
     test/module.ll
-    test/test.ll)
+    test/test.ll
+    .vscode/littlelambda.natvis)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRCS})
 add_executable (littlelambda ${SRCS})
 
 if(MSVC)
     set_source_files_properties(mini-gmp.c PROPERTIES COMPILE_FLAGS "/wd4146 /wd4244 /wd4267")
-    set_target_properties(littlelambda PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_target_properties(littlelambda PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
     target_compile_options(littlelambda PUBLIC "/EHsc")
 endif()
 

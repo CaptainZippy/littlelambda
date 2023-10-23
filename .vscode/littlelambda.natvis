@@ -14,8 +14,9 @@
         <Size>((lam_list*)this)-&gt;len</Size>
         <ValuePointer>(lam_value*)(((lam_list*)this)+1)</ValuePointer>
       </ArrayItems>
-      <ExpandedItem Condition="type==9">((lam_env*)this)->_parent</ExpandedItem>
       <ExpandedItem Condition="type==9">((lam_env*)this)->_map</ExpandedItem>
+      <Item Condition="type==9" Name="Parent">"--------------------"</Item>
+      <ExpandedItem Condition="type==9">((lam_env*)this)->_parent</ExpandedItem>
     </Expand>
   </Type>
   <Type Name="lam_value">
