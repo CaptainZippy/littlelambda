@@ -9,6 +9,8 @@ set(SRCS
     src/littlelambda.h
     src/mini-gmp.h
     src/mini-gmp.c
+    test/01-Basic.ll
+    test/math.ll
     test/module.ll
     test/test.ll
     .vscode/littlelambda.natvis)

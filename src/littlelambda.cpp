@@ -133,7 +133,7 @@ lam_value lam_parse(const char* input, const char** restart) {
             case '\'': {
                 const char* after = nullptr;
                 lam_value quoted = lam_parse(cur, &after);
-                lam_value val = lam_make_list_l(lam_make_symbol("quote"), quoted);
+                lam_value val = lam_make_list_l(lam_make_symbol("$quote"), quoted);
                 cur = after;
                 if (curList) {
                     curList->push_back(val);
@@ -495,18 +495,18 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     }
 
     ret->add_operative(
-        "define",
+        "$define",
         [](lam_callable* call, lam_env* env, auto callArgs,
            auto numCallArgs) -> lam_value_or_tail_call {
             assert(numCallArgs >= 2);
             auto lhs = callArgs[0];
-            if (lhs.type() == lam_type::Symbol) {  // (define sym value)
+            if (lhs.type() == lam_type::Symbol) {  // ($define sym value)
                 assert(numCallArgs == 2);
                 auto sym = reinterpret_cast<lam_symbol*>(lhs.uval & ~lam_Magic::Mask);
                 auto r = lam_eval(callArgs[1], env);
                 env->insert(sym->val(), r);
-            } else if (lhs.type() == lam_type::List) {  // (define (applicative ...) body) or
-                                                        // (define ($operative ...) env body)
+            } else if (lhs.type() == lam_type::List) {  // ($define (applicative ...) body) or
+                                                        // ($define ($operative ...) env body)
                 auto argsList = reinterpret_cast<lam_list*>(lhs.uval & ~lam_Magic::Mask);
                 const char* name = argsList->at(0).as_symbol()->val();
                 std::span<lam_value> fnargs{argsList->first() + 1,
@@ -551,9 +551,9 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         });
 
     ret->add_operative(
-        "lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             if (n != 2) {
-                return lam_make_error(WrongNumberOfArguments, "(lambda args body)");
+                return lam_make_error(WrongNumberOfArguments, "($lambda args body)");
             }
             auto lhs = a[0];
             auto rhs = a[1];
@@ -587,7 +587,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         });
 
     ret->add_operative(
-        "if", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$if", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 2);
             assert(n <= 3);
             auto cond = lam_eval(a[0], env);
@@ -601,7 +601,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
         });
     ret->add_operative(
-        "module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
             lam_env* inner = new lam_env(env, modname->val());
@@ -613,7 +613,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return r;
         });
     ret->add_operative(
-        "import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             auto modname = a[0].as_symbol();
             lam_value imp = env->lookup("_hooks._import");
@@ -623,11 +623,11 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return result;
         });
     ret->add_operative(
-        "quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             return a[0];
         });
-    ret->add_operative(
+    ret->add_operative( // behaves like an applicative. implementation is operative to get tail call
         "begin", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             for (size_t i = 0; i < n - 1; ++i) {
@@ -636,7 +636,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return {a[n - 1], env};  // tail call
         });
     ret->add_operative(
-        "let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
+        "$let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 2);
             lam_env* inner = inner = new lam_env(nullptr, 0, nullptr, 0, env, nullptr);
             lam_list* locals = a[0].as_list();

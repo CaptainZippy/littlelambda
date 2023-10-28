@@ -61,13 +61,13 @@ int main() {
         lam_parse("12.2");
         lam_parse("(hello world)");
         lam_parse("(hello (* num 141.0) world)");
-        lam_parse("(begin (define r 10) (* 3.4 (* r r)))");
-        lam_parse("(begin (define r null) (print r))");
+        lam_parse("(begin ($define r 10) (* 3.4 (* r r)))");
+        lam_parse("(begin ($define r null) (print r))");
     }
 
     read_and_eval("01-Basic.ll");
     if (0) {
-        lam_value expr = lam_parse("(begin (define r 10) (* 3.1 (* r r)))");
+        lam_value expr = lam_parse("(begin ($define r 10) (* 3.1 (* r r)))");
         lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
@@ -76,10 +76,10 @@ int main() {
     if (1) {
         lam_value expr = lam_parse(
             "(begin"
-            " (import math)"
-            " (define (area r) (* math.pi (* r r)))"
-            " (define r 10)"
-            " (print (let (r 20) (area r)) \"\\n\")"
+            " ($import math)"
+            " ($define (area r) (* math.pi (* r r)))"
+            " ($define r 10)"
+            " (print ($let (r 20) (area r)) \"\\n\")"
             " (print (area r) \"\\n\")"
             ")");
         lam_env* env = lam_make_env_default();
@@ -90,8 +90,8 @@ int main() {
     if (0) {
         lam_value expr = lam_parse(
             "(begin"
-            " (import math)"
-            " (define (circle-area r) (* pi (* r r)))"
+            " ($import math)"
+            " ($define (circle-area r) (* pi (* r r)))"
             " (circle-area 3)"
             ")");
 
@@ -104,7 +104,7 @@ int main() {
     if (1) {
         lam_value expr = lam_parse(
             "(begin"
-            "   (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1))) ))"
+            "   ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))"
             "   (fact (bigint 35)))");
 
         lam_env* env = lam_make_env_default();
@@ -118,8 +118,8 @@ int main() {
     if (1) {
         lam_value expr = lam_parse(
             "(begin"
-            "   (define (twice x) (* 2 x))"
-            "   (define repeat (lambda (f) (lambda (x) (f (f x)))))"
+            "   ($define (twice x) (* 2 x))"
+            "   ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))"
             "   ((repeat twice) 10)"
             ")");
         lam_env* env = lam_make_env_default();
@@ -133,24 +133,24 @@ int main() {
 
     if (0) {
         lam_value expr = lam_parse(
-            "(define (range a b) (if (= a b) (quote()) (cons a (range(+ a 1) b))))"
-            //"(define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
+            "($define (range a b) ($if (= a b) ($quote()) (cons a (range(+ a 1) b))))"
+            //"($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
 
     if (1) {
         lam_value expr = lam_parse(
-            //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
+            //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
-            "  (define ltest (lambda args (print args)))"
-            "  (define (vtest . args) (print args))"
+            "  ($define ltest ($lambda args (print args)))"
+            "  ($define (vtest . args) (print args))"
             "  (ltest 1 2)"
             "  (ltest 1 (+ 2 2))"
             "  (vtest 1 2)"
             "  (vtest 1 2 (+ 3 5))"
-            //"  (macro (curry a b) (lambda (x) (a b x)))"
-            "  (define (count item L)"
-            "    (mapreduce (lambda (x) (equal? item x))"
+            //"  (macro (curry a b) ($lambda (x) (a b x)))"
+            "  ($define (count item L)"
+            "    (mapreduce ($lambda (x) (equal? item x))"
             //"    (mapreduce (curry equal? item)"
             "             + L))"
             "  (count 0 (list 0 1 2 0 3 0 0)))");
@@ -161,14 +161,14 @@ int main() {
 
     if (1) {
         lam_value expr = lam_parse(
-            //"(define (count item L) (if L (+ (equal? item (first L)) (count item (rest L))) 0))"
+            //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             R"---(
             (begin
                 (print "hello\n")
-                (define (test_one expr) (begin (define a 202) (eval expr)))
-                (define (test_two expr) (begin (define a 999) (eval expr)))
-                (define qfoo (quote (+ (* 6 7) a)))
-                (define lfoo (list + (* 6 7) (quote a)))
+                ($define (test_one expr) (begin ($define a 202) (eval expr)))
+                ($define (test_two expr) (begin ($define a 999) (eval expr)))
+                ($define qfoo ($quote (+ (* 6 7) a)))
+                ($define lfoo (list + (* 6 7) ($quote a)))
                 (print "qfoo" qfoo "\n")
                 (print "lfoo" lfoo "\n")
                 (print (test_one qfoo) "\n")
@@ -176,7 +176,7 @@ int main() {
                 (print (test_one lfoo) "\n")
                 (print (test_two lfoo) "\n")
 
-                (define envp (begin (define a 10) (define b 20) (getenv)))
+                ($define envp (begin ($define a 10) ($define b 20) (getenv)))
                 (print "Y " a b "\n")
                 (print "X " envp (eval qfoo envp))
 
