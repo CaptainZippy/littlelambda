@@ -1,5 +1,6 @@
 #include "littlelambda.h"
 #include <cstring>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -12,6 +13,8 @@ enum ErrorCode {
     ParseUnexpectedNull,
     ParseUnexpectedSemiColon,
     ParseUnexpectedEscape,
+    ParseUnexpectedEndOfFile,
+    ParseUnexpectedEndList,
     ParseMissingSymbolName,
     SymbolNotFound,
     WrongNumberOfArguments,
@@ -38,22 +41,28 @@ static T* callocPlus(size_t extra) {
 // Parse null terminated input
 lam_value lam_parse(const char* input, const char** restart) {
     *restart = input;
+    // No recursion - explicit stack for lists.
     std::vector<std::vector<lam_value>> stack;
-    std::vector<lam_value>* curList{};
     for (const char* cur = input; true;) {
-        const char* start = cur;
+        const char* startCur = cur;
+        std::optional<lam_value> parsed{};
+
+        // Try to parse an single va;ie & put it into 'parsed'
+        // After this switch, there is a common block to manage the stack
+        // and update the restart point etc.
         switch (*cur++) {
             case '\0': {
                 *restart = cur - 1;
+                if (!stack.empty()) {
+                    return lam_make_error(ParseUnexpectedEndOfFile,
+                                          "End of file in compound expression");
+                }
                 return lam_make_null();
             }
             case ' ':
             case '\t':
             case '\r':
             case '\n': {
-                while (is_white(*cur)) {
-                    ++cur;
-                }
                 break;
             }
             case ';': {  // ";;" to eol is comment
@@ -72,29 +81,22 @@ lam_value lam_parse(const char* input, const char** restart) {
             }
             case '(': {
                 stack.emplace_back();
-                curList = &stack.back();
                 break;
             }
             case ')': {
-                auto l = lam_make_list_v(curList->data(), curList->size());
-                stack.pop_back();
                 if (stack.empty()) {
-                    while (is_white(*cur)) {
-                        ++cur;
-                    }
-                    *restart = cur;
-                    return l;
+                    return lam_make_error(ParseUnexpectedEndList, "End of list without beginning");
                 }
-                curList = &stack.back();
-                curList->push_back(l);
+                auto l = lam_make_list_v(stack.back().data(), stack.back().size());
+                parsed.emplace(l);
+                stack.pop_back();
                 break;
             }
 
             case '"': {
-                const char* start = cur;
+                const char* start = cur;  // start of the current run
                 std::string res;
-                bool done = false;
-                while (!done) {
+                while (!parsed.has_value()) {
                     switch (char c = *cur++) {
                         case 0: {
                             return lam_make_error(ParseUnexpectedNull,
@@ -114,14 +116,8 @@ lam_value lam_parse(const char* input, const char** restart) {
                         }
                         case '"': {
                             res.append(start, cur - 1);
-                            auto val = lam_make_string(res.data(), res.size());
-                            if (curList) {
-                                curList->push_back(val);
-                            } else {
-                                *restart = cur;
-                                return val;
-                            }
-                            done = true;
+                            auto s = lam_make_string(res.data(), res.size());
+                            parsed.emplace(s);
                             break;
                         }
                         default:
@@ -134,61 +130,65 @@ lam_value lam_parse(const char* input, const char** restart) {
                 const char* after = nullptr;
                 lam_value quoted = lam_parse(cur, &after);
                 lam_value val = lam_make_list_l(lam_make_symbol("$quote"), quoted);
+                parsed.emplace(val);
                 cur = after;
-                if (curList) {
-                    curList->push_back(val);
-                } else {
-                    *restart = cur;
-                    return val;
-                }
                 break;
             }
 
-            //    // keyword
-            //case ':': {
-            //    while (!is_word_boundary(*cur)) {
-            //        ++cur;
-            //    }
-            //    lam_value val = (cur - start > 1) ? lam_make_symbol(start + 1, cur - start - 1)
-            //                                      : lam_make_error(ParseMissingSymbolName,
-            //                                                       "Missing symbol name after ':'");
-            //    if (curList) {
-            //        curList->push_back(val);
-            //    } else {
-            //        *restart = cur;
-            //        return val;
-            //    }
-            //    break;
-            //}
+                //    // keyword
+                // case ':': {
+                //    while (!is_word_boundary(*cur)) {
+                //        ++cur;
+                //    }
+                //    lam_value val = (cur - start > 1) ? lam_make_symbol(start + 1, cur - start -
+                //    1)
+                //                                      : lam_make_error(ParseMissingSymbolName,
+                //                                                       "Missing symbol name after
+                //                                                       ':'");
+                //    if (curList) {
+                //        curList->push_back(val);
+                //    } else {
+                //        *restart = cur;
+                //        return val;
+                //    }
+                //    break;
+                //}
 
             default: {
                 while (!is_word_boundary(*cur)) {
                     ++cur;
                 }
                 const char* end = cur;
-                lam_value val{};
-                do {
-                    char* endparse;
-                    long asInt = strtol(start, &endparse, 10);
-                    if (endparse == end) {
-                        val = lam_make_int(asInt);
-                        break;
-                    }
-                    double asDbl = strtold(start, &endparse);
-                    if (endparse == end) {
-                        val = lam_make_double(asDbl);
-                        break;
-                    }
-                    val = lam_make_symbol(start, end - start);
-                } while (false);
-
-                if (curList) {
-                    curList->push_back(val);
+                char* endparse;
+                long asInt = strtol(startCur, &endparse, 10);
+                if (endparse == end) {
+                    parsed.emplace(lam_make_int(asInt));
                 } else {
-                    *restart = cur;
-                    return val;
+                    double asDbl = strtold(startCur, &endparse);
+                    if (endparse == end) {
+                        parsed.emplace(lam_make_double(asDbl));
+                    } else {
+                        parsed.emplace(lam_make_symbol(startCur, end - startCur));
+                    }
                 }
                 break;
+            }
+        }
+
+        // Consume any whitespace & advance restart point
+        while (is_white(*cur)) {
+            ++cur;
+        }
+        *restart = cur;
+
+        // Check for explicit recursion end
+        if (parsed.has_value()) {
+            auto v = parsed.value();
+            if (auto s = stack.size()) {
+                stack[s - 1].push_back(v);
+            } else {
+                *restart = cur;
+                return v;
             }
         }
     }
@@ -627,7 +627,8 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             assert(n == 1);
             return a[0];
         });
-    ret->add_operative( // behaves like an applicative. implementation is operative to get tail call
+    ret->add_operative(  // Though 'begin' appears like an applicative, the the implementation is
+                         // operative to get an opportunity to implement tail call optimization.
         "begin", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             for (size_t i = 0; i < n - 1; ++i) {
