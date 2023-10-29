@@ -278,11 +278,15 @@ struct lam_env : lam_obj {
         }
     }
 
+    void seal() { _sealed = true; }
+
     void bind(const char* name, lam_value value) {
+        assert(!_sealed);
         auto pair = _map.emplace(name, value);
         assert(pair.second && "symbol already defined");
     }
     void bind_applicative(const char* name, lam_invoke b) {
+        assert(!_sealed);
         auto* d = callocPlus<lam_callable>(0);
         d->type = lam_type::Applicative;
         d->name = name;
@@ -295,6 +299,7 @@ struct lam_env : lam_obj {
         _map.emplace(name, v);
     }
     void bind_operative(const char* name, lam_invoke b, const void* context = nullptr) {
+        assert(!_sealed);
         auto* d = callocPlus<lam_callable>(0);
         d->type = lam_type::Operative;
         d->name = name;
@@ -379,6 +384,7 @@ struct lam_env : lam_obj {
     std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
     lam_env* _parent{nullptr};
     const char* _name{nullptr};
+    bool _sealed{false};
 };
 
 static lam_value_or_tail_call invoke_applicative(lam_callable* call,
@@ -386,7 +392,7 @@ static lam_value_or_tail_call invoke_applicative(lam_callable* call,
                                                  lam_value* args,
                                                  auto narg) {
     assert(call->envsym == nullptr);
-    lam_env* inner = inner = new lam_env(call->env, nullptr);
+    lam_env* inner = new lam_env(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     return {call->body, inner};
 }
@@ -395,7 +401,7 @@ static lam_value_or_tail_call invoke_operative(lam_callable* call,
                                                lam_env* env,
                                                lam_value* args,
                                                auto narg) {
-    lam_env* inner = inner = new lam_env(call->env, nullptr);
+    lam_env* inner = new lam_env(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     assert(call->envsym);
     inner->bind(call->envsym, lam_make_value(env));
@@ -492,6 +498,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                 },
                 hooks);
         }
+        _hooks->seal();
         ret->bind("_hooks", lam_make_value(_hooks));
     }
 
@@ -915,7 +922,8 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return lam_make_int(c);
         });
     ret->bind("null", lam_make_null());
-    return ret;
+    ret->seal();
+    return new lam_env(ret, nullptr);
 }
 
 lam_value lam_eval(lam_value val, lam_env* env) {
