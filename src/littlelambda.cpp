@@ -51,6 +51,7 @@ lam_value lam_parse(const char* input, const char** restart) {
         // After this switch, there is a common block to manage the stack
         // and update the restart point etc.
         switch (*cur++) {
+            // parse_end
             case '\0': {
                 *restart = cur - 1;
                 if (!stack.empty()) {
@@ -59,13 +60,15 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 return lam_make_null();
             }
+            // Whitespace
             case ' ':
             case '\t':
             case '\r':
             case '\n': {
                 break;
             }
-            case ';': {  // ";;" to eol is comment
+            // parse_comment ";;" to eol is comment
+            case ';': {
                 if (*cur != ';') {
                     return lam_make_error(ParseUnexpectedSemiColon, "Unexpected single ';'");
                 }
@@ -79,6 +82,7 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 break;
             }
+            // parse_list
             case '(': {
                 stack.emplace_back();
                 break;
@@ -92,7 +96,7 @@ lam_value lam_parse(const char* input, const char** restart) {
                 stack.pop_back();
                 break;
             }
-
+            // parse_string
             case '"': {
                 const char* start = cur;  // start of the current run
                 std::string res;
@@ -126,6 +130,7 @@ lam_value lam_parse(const char* input, const char** restart) {
                 }
                 break;
             }
+            // parse_quote
             case '\'': {
                 const char* after = nullptr;
                 lam_value quoted = lam_parse(cur, &after);
@@ -153,7 +158,7 @@ lam_value lam_parse(const char* input, const char** restart) {
                 //    }
                 //    break;
                 //}
-
+            // parse_number parse_symbol
             default: {
                 while (!is_word_boundary(*cur)) {
                     ++cur;

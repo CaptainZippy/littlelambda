@@ -6,6 +6,8 @@ Features:
  * NaN boxing. Basic types such as int/double are 64 bits and do not go to the heap.
  * Lists, symbols, functions etc are heap allocated.
  * Tail recursion optimization
+ * First class environments
+ * Supports kernel-style operatives (calls where all the arguments are passed unevaluated)
 
 Missing features:
  * Garbage collection (but see littlegc)
