@@ -489,7 +489,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         lam_env* _hooks = new lam_env(nullptr, "_hooks");
         if (hooks->import) {
             _hooks->bind_operative(
-                "_import",
+                "$_import",
                 [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
                     assert(n == 1);
                     auto modname = a[0].as_symbol();
@@ -624,7 +624,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "$import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             auto modname = a[0].as_symbol();
-            lam_value imp = env->lookup("_hooks._import");
+            lam_value imp = env->lookup("_hooks.$_import");
             lam_callable* func = imp.as_func();
             lam_value result = lam_eval_call(func, nullptr, a, 1);
             env->bind(modname->val(), result);
