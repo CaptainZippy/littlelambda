@@ -1,8 +1,6 @@
 #pragma once
 
 #include "mini-gmp.h"
-#include <unordered_map>
-#include <string_view>
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
@@ -231,39 +229,17 @@ struct lam_error : lam_obj {
 };
 
 struct lam_env : lam_obj {
-    lam_env(lam_env* parent, const char* name)
-        : lam_obj(lam_type::Environment), _parent{parent}, _name{name} {}
-
     void bind_multiple(const char* keys[],
                        size_t nkeys,
                        lam_value* values,
                        size_t nvalues,
                        const char* variadic);
 
-    void seal() { _sealed = true; }
+    void seal();
     void bind(const char* name, lam_value value);
     void bind_applicative(const char* name, lam_invoke b);
     void bind_operative(const char* name, lam_invoke b, const void* context = nullptr);
     lam_value lookup(const char* sym);
-
-   protected:
-    struct string_hash {
-        using is_transparent = void;
-        [[nodiscard]] size_t operator()(const char* txt) const {
-            return std::hash<std::string_view>{}(txt);
-        }
-        [[nodiscard]] size_t operator()(std::string_view txt) const {
-            return std::hash<std::string_view>{}(txt);
-        }
-        [[nodiscard]] size_t operator()(const std::string& txt) const {
-            return std::hash<std::string>{}(txt);
-        }
-    };
-    static lam_value _lookup(const char* symStr, lam_env* startEnv);
-    std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
-    lam_env* _parent{nullptr};
-    const char* _name{nullptr};
-    bool _sealed{false};
 };
 
 // Create values

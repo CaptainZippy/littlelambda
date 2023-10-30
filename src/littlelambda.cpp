@@ -260,11 +260,40 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
+struct lam_env_impl : lam_env {
+    lam_env_impl(lam_env* parent, const char* name)
+        : lam_env(lam_type::Environment), _parent{parent}, _name{name} {}
+
+    struct string_hash {
+        using is_transparent = void;
+        [[nodiscard]] size_t operator()(const char* txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(std::string_view txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(const std::string& txt) const {
+            return std::hash<std::string>{}(txt);
+        }
+    };
+    static lam_value _lookup(const char* symStr, lam_env* startEnv);
+    std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
+    lam_env* _parent{nullptr};
+    const char* _name{nullptr};
+    bool _sealed{false};
+};
+
+void lam_env::seal() {
+    auto self = static_cast<lam_env_impl*>(this);
+    self->_sealed = true;
+}
+
 void lam_env::bind_multiple(const char* keys[],
                             size_t nkeys,
                             lam_value* values,
                             size_t nvalues,
                             const char* variadic) {
+    auto self = static_cast<lam_env_impl*>(this);
     assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
     for (size_t i = 0; i < nkeys; ++i) {
         bind(keys[i], values[i]);
@@ -276,12 +305,15 @@ void lam_env::bind_multiple(const char* keys[],
 }
 
 void lam_env::bind(const char* name, lam_value value) {
-    assert(!_sealed);
-    auto pair = _map.emplace(name, value);
+    auto self = static_cast<lam_env_impl*>(this);
+    assert(!self->_sealed);
+    auto pair = self->_map.emplace(name, value);
     assert(pair.second && "symbol already defined");
 }
+
 void lam_env::bind_applicative(const char* name, lam_invoke b) {
-    assert(!_sealed);
+    auto self = static_cast<lam_env_impl*>(this);
+    assert(!self->_sealed);
     auto* d = callocPlus<lam_callable>(0);
     d->type = lam_type::Applicative;
     d->name = name;
@@ -291,10 +323,12 @@ void lam_env::bind_applicative(const char* name, lam_invoke b) {
     d->num_args = 0;
     d->context = nullptr;
     lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
-    _map.emplace(name, v);
+    self->_map.emplace(name, v);
 }
+
 void lam_env::bind_operative(const char* name, lam_invoke b, const void* context) {
-    assert(!_sealed);
+    auto self = static_cast<lam_env_impl*>(this);
+    assert(!self->_sealed);
     auto* d = callocPlus<lam_callable>(0);
     d->type = lam_type::Operative;
     d->name = name;
@@ -304,13 +338,13 @@ void lam_env::bind_operative(const char* name, lam_invoke b, const void* context
     d->num_args = 0;
     d->context = context;
     lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
-    _map.emplace(name, v);
+    self->_map.emplace(name, v);
 }
 
 // symStr is a possibly-dotted identifier
-lam_value lam_env::_lookup(const char* symStr, lam_env* startEnv) {
+lam_value lam_env_impl::_lookup(const char* symStr, lam_env* startEnv) {
     std::string_view todo{symStr};
-    lam_env* env = startEnv;
+    auto env = static_cast<lam_env_impl*>(startEnv);
     while (1) {
         // Extract 'cur' - the next segment of the dotted path
         auto dot = todo.find('.', 0);
@@ -331,20 +365,21 @@ lam_value lam_env::_lookup(const char* symStr, lam_env* startEnv) {
                 if (todo.empty()) {  // we're at the last dotted id
                     return v;
                 } else {  // go to next dot
-                    env = v.as_env();
+                    env = static_cast<lam_env_impl*>(v.as_env());
                     break;  // to outer loop
                 }
             }
             if (auto p = e->_parent) {
-                e = e->_parent;
+                e = static_cast<lam_env_impl*>(e->_parent);
             } else {
                 return lam_make_error(SymbolNotFound, "symbol not found");
             }
         }
     }
 }
+
 lam_value lam_env::lookup(const char* sym) {
-    return _lookup(sym, this);
+    return lam_env_impl::_lookup(sym, this);
 }
 
 static lam_type lam_coerce_numeric_types(lam_value& a, lam_value& b) {
@@ -370,7 +405,7 @@ static lam_value_or_tail_call invoke_applicative(lam_callable* call,
                                                  lam_value* args,
                                                  auto narg) {
     assert(call->envsym == nullptr);
-    lam_env* inner = new lam_env(call->env, nullptr);
+    lam_env* inner = new lam_env_impl(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     return {call->body, inner};
 }
@@ -379,7 +414,7 @@ static lam_value_or_tail_call invoke_operative(lam_callable* call,
                                                lam_env* env,
                                                lam_value* args,
                                                auto narg) {
-    lam_env* inner = new lam_env(call->env, nullptr);
+    lam_env* inner = new lam_env_impl(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     assert(call->envsym);
     inner->bind(call->envsym, lam_make_value(env));
@@ -466,9 +501,9 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
 }
 
 lam_env* lam_make_env_builtin(lam_hooks* hooks) {
-    lam_env* ret = new lam_env(nullptr, "builtin");
+    lam_env* ret = new lam_env_impl(nullptr, "builtin");
     if (hooks) {
-        lam_env* _hooks = new lam_env(nullptr, "_hooks");
+        lam_env* _hooks = new lam_env_impl(nullptr, "_hooks");
         if (hooks->import) {
             _hooks->bind_operative(
                 "$_import",
@@ -594,7 +629,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
-            lam_env* inner = new lam_env(env, modname->val());
+            lam_env* inner = new lam_env_impl(env, modname->val());
             lam_value r = lam_make_null();
             for (size_t i = 1; i < n; i += 1) {
                 r = lam_eval(a[i], inner);
@@ -629,7 +664,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     ret->bind_operative(
         "$let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 2);
-            lam_env* inner = inner = new lam_env(env, nullptr);
+            lam_env* inner = inner = new lam_env_impl(env, nullptr);
             lam_list* locals = a[0].as_list();
             assert(locals);
             assert(locals->len % 2 == 0);
@@ -905,7 +940,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         });
     ret->bind("null", lam_make_null());
     ret->seal();
-    return new lam_env(ret, nullptr);
+    return new lam_env_impl(ret, nullptr);
 }
 
 lam_value lam_eval(lam_value val, lam_env* env) {
