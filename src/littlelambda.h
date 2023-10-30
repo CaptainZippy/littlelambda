@@ -1,6 +1,8 @@
 #pragma once
 
 #include "mini-gmp.h"
+#include <unordered_map>
+#include <string_view>
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
@@ -27,15 +29,16 @@ enum class lam_type {
     Null,    // 0
     Double,  // 1
     Int,     // 2
+    Opaque,  // 3
     /*heap objects*/
-    BigInt,       // 3
-    String,       // 4
-    Symbol,       // 5
-    List,         // 6
-    Applicative,  // 7
-    Operative,    // 8
-    Environment,  // 9
-    Error,        // 10
+    BigInt,       // 10
+    String,       // 11
+    Symbol,       // 12
+    List,         // 13
+    Applicative,  // 14
+    Operative,    // 15
+    Environment,  // 16
+    Error,        // 17
 };
 
 struct lam_env;
@@ -82,7 +85,7 @@ enum lam_Magic : lam_u64 {
     TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit value
     TagObj = 0x7ffd0000'00000000,    // 1101 + 48 bit pointer to lam_obj
     TagConst = 0x7ffe0000'00000000,  // 1110 + lower bits indicate which constant: null, true, false
-    // Tag 1111 available
+    TagOpaque = 0x7fff0000'00000000,  // 1111 + lower 48 bits are opaque data
 
     ValueConstNull = TagConst | 2,
 };
@@ -100,14 +103,21 @@ union lam_value {
     lam_u64 uval;
     double dval;
 
+    using uint48_t = unsigned long long;
+
     constexpr int as_int() const {
-        assert((uval & lam_Magic::Mask) == TagInt);
+        assert((uval & lam_Magic::Mask) == lam_Magic::TagInt);
         return int(unsigned(uval));
     }
 
     double as_double() const {
         assert((uval & lam_Magic::TaggedNan) != lam_Magic::TaggedNan);
         return dval;
+    }
+
+    uint48_t as_opaque() const {
+        assert((uval & lam_Magic::Mask) == lam_Magic::TagOpaque);
+        return uval & ~0xffff0000'00000000;
     }
 
     template <typename ReqType>
@@ -147,6 +157,8 @@ union lam_value {
                 return lam_type::Int;
             case TagConst:
                 return lam_type::Null;
+            case TagOpaque:
+                return lam_type::Opaque;
             default:
                 return lam_type::Double;
         }
@@ -218,6 +230,42 @@ struct lam_error : lam_obj {
     const char* msg;
 };
 
+struct lam_env : lam_obj {
+    lam_env(lam_env* parent, const char* name)
+        : lam_obj(lam_type::Environment), _parent{parent}, _name{name} {}
+
+    void bind_multiple(const char* keys[],
+                       size_t nkeys,
+                       lam_value* values,
+                       size_t nvalues,
+                       const char* variadic);
+
+    void seal() { _sealed = true; }
+    void bind(const char* name, lam_value value);
+    void bind_applicative(const char* name, lam_invoke b);
+    void bind_operative(const char* name, lam_invoke b, const void* context = nullptr);
+    lam_value lookup(const char* sym);
+
+   protected:
+    struct string_hash {
+        using is_transparent = void;
+        [[nodiscard]] size_t operator()(const char* txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(std::string_view txt) const {
+            return std::hash<std::string_view>{}(txt);
+        }
+        [[nodiscard]] size_t operator()(const std::string& txt) const {
+            return std::hash<std::string>{}(txt);
+        }
+    };
+    static lam_value _lookup(const char* symStr, lam_env* startEnv);
+    std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
+    lam_env* _parent{nullptr};
+    const char* _name{nullptr};
+    bool _sealed{false};
+};
+
 // Create values
 
 static inline lam_value lam_make_double(double d) {
@@ -225,6 +273,10 @@ static inline lam_value lam_make_double(double d) {
 }
 static inline lam_value lam_make_int(int i) {
     return {.uval = lam_u32(i) | lam_Magic::TagInt};
+}
+static inline lam_value lam_make_opaque(unsigned long long u) {
+    assert(u <= 0x0000ffff'ffffffff);
+    return {.uval = u | lam_Magic::TagOpaque};
 }
 static inline lam_value lam_make_null() {
     return {.uval = lam_Magic::ValueConstNull};

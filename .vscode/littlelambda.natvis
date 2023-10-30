@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <Type Name="lam_obj">
-    <DisplayString Condition="type==4">String={(char*)(((lam_string*)this)+1)}</DisplayString>
-    <DisplayString Condition="type==5">Symbol={(char*)(((lam_symbol*)this)+1)}</DisplayString>
-    <DisplayString Condition="type==6">List size={((lam_list*)this)-&gt;len}</DisplayString>
-    <DisplayString Condition="type==7">Applicative {((lam_callable*)this)-&gt;name}</DisplayString>
-    <DisplayString Condition="type==8">Operative {((lam_callable*)this)-&gt;name}</DisplayString>
-    <DisplayString Condition="type==9">Env {((lam_env*)this)-&gt;_name}</DisplayString>
-    <DisplayString Condition="type==10">Error {((lam_error*)this)-&gt;code,x} {((lam_error*)this)-&gt;msg}</DisplayString>
+    <DisplayString Condition="type==11">String={(char*)(((lam_string*)this)+1)}</DisplayString>
+    <DisplayString Condition="type==12">Symbol={(char*)(((lam_symbol*)this)+1)}</DisplayString>
+    <DisplayString Condition="type==13">List size={((lam_list*)this)-&gt;len}</DisplayString>
+    <DisplayString Condition="type==14">Applicative {((lam_callable*)this)-&gt;name}</DisplayString>
+    <DisplayString Condition="type==15">Operative {((lam_callable*)this)-&gt;name}</DisplayString>
+    <DisplayString Condition="type==16">Env {((lam_env*)this)-&gt;_name}</DisplayString>
+    <DisplayString Condition="type==17">Error {((lam_error*)this)-&gt;code,x} {((lam_error*)this)-&gt;msg}</DisplayString>
     <DisplayString>[FIXME] type={type}</DisplayString>
     <Expand>
-      <ArrayItems Condition="type==6">
+      <ArrayItems Condition="type==13">
         <Size>((lam_list*)this)-&gt;len</Size>
         <ValuePointer>(lam_value*)(((lam_list*)this)+1)</ValuePointer>
       </ArrayItems>
-      <ExpandedItem Condition="type==9">((lam_env*)this)->_map</ExpandedItem>
+      <ExpandedItem Condition="type==13">((lam_env*)this)->_map</ExpandedItem>
       <Item Condition="type==9" Name="Parent">"--------------------"</Item>
-      <ExpandedItem Condition="type==9">((lam_env*)this)->_parent</ExpandedItem>
+      <ExpandedItem Condition="type==13">((lam_env*)this)->_parent</ExpandedItem>
     </Expand>
   </Type>
   <Type Name="lam_value">

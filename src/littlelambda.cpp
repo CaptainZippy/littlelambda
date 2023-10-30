@@ -1,4 +1,5 @@
 #include "littlelambda.h"
+#include <inttypes.h>
 #include <cstring>
 #include <optional>
 #include <span>
@@ -259,133 +260,110 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-struct lam_env : lam_obj {
-    lam_env(lam_env* parent, const char* name)
-        : lam_obj(lam_type::Environment), _parent{parent}, _name{name} {}
+void lam_env::bind_multiple(const char* keys[],
+                            size_t nkeys,
+                            lam_value* values,
+                            size_t nvalues,
+                            const char* variadic) {
+    assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
+    for (size_t i = 0; i < nkeys; ++i) {
+        bind(keys[i], values[i]);
+    }
+    if (variadic) {
+        lam_value kw = lam_make_list_v(values + nkeys, nvalues - nkeys);
+        bind(variadic, kw);
+    }
+}
 
-    void bind_multiple(const char* keys[],
-                       size_t nkeys,
-                       lam_value* values,
-                       size_t nvalues,
-                       const char* variadic) {
-        assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
-        for (size_t i = 0; i < nkeys; ++i) {
-            bind(keys[i], values[i]);
+void lam_env::bind(const char* name, lam_value value) {
+    assert(!_sealed);
+    auto pair = _map.emplace(name, value);
+    assert(pair.second && "symbol already defined");
+}
+void lam_env::bind_applicative(const char* name, lam_invoke b) {
+    assert(!_sealed);
+    auto* d = callocPlus<lam_callable>(0);
+    d->type = lam_type::Applicative;
+    d->name = name;
+    d->invoke = b;
+    d->env = nullptr;
+    d->body = {};
+    d->num_args = 0;
+    d->context = nullptr;
+    lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
+    _map.emplace(name, v);
+}
+void lam_env::bind_operative(const char* name, lam_invoke b, const void* context) {
+    assert(!_sealed);
+    auto* d = callocPlus<lam_callable>(0);
+    d->type = lam_type::Operative;
+    d->name = name;
+    d->invoke = b;
+    d->env = nullptr;
+    d->body = {};
+    d->num_args = 0;
+    d->context = context;
+    lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
+    _map.emplace(name, v);
+}
+
+// symStr is a possibly-dotted identifier
+lam_value lam_env::_lookup(const char* symStr, lam_env* startEnv) {
+    std::string_view todo{symStr};
+    lam_env* env = startEnv;
+    while (1) {
+        // Extract 'cur' - the next segment of the dotted path
+        auto dot = todo.find('.', 0);
+        std::string_view cur = todo;
+        if (dot != std::string::npos) {
+            cur = cur.substr(0, dot);
+            todo.remove_prefix(dot + 1);
+        } else {  // end of path
+            todo = {};
         }
-        if (variadic) {
-            lam_value kw = lam_make_list_v(values + nkeys, nvalues - nkeys);
-            bind(variadic, kw);
-        }
-    }
 
-    void seal() { _sealed = true; }
-
-    void bind(const char* name, lam_value value) {
-        assert(!_sealed);
-        auto pair = _map.emplace(name, value);
-        assert(pair.second && "symbol already defined");
-    }
-    void bind_applicative(const char* name, lam_invoke b) {
-        assert(!_sealed);
-        auto* d = callocPlus<lam_callable>(0);
-        d->type = lam_type::Applicative;
-        d->name = name;
-        d->invoke = b;
-        d->env = nullptr;
-        d->body = {};
-        d->num_args = 0;
-        d->context = nullptr;
-        lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
-        _map.emplace(name, v);
-    }
-    void bind_operative(const char* name, lam_invoke b, const void* context = nullptr) {
-        assert(!_sealed);
-        auto* d = callocPlus<lam_callable>(0);
-        d->type = lam_type::Operative;
-        d->name = name;
-        d->invoke = b;
-        d->env = nullptr;
-        d->body = {};
-        d->num_args = 0;
-        d->context = context;
-        lam_value v{.uval = lam_u64(d) | lam_Magic::TagObj};
-        _map.emplace(name, v);
-    }
-
-    // symStr is a possibly-dotted identifier
-    static lam_value _lookup(const char* symStr, lam_env* startEnv) {
-        std::string_view todo{symStr};
-        lam_env* env = startEnv;
-        while (1) {
-            // Extract 'cur' - the next segment of the dotted path
-            auto dot = todo.find('.', 0);
-            std::string_view cur = todo;
-            if (dot != std::string::npos) {
-                cur = cur.substr(0, dot);
-                todo.remove_prefix(dot + 1);
-            } else {  // end of path
-                todo = {};
+        // Look up 'cur', return it if it's the last segment.
+        // Otherwise update 'env' and loop for next segment.
+        for (auto e = env;;) {
+            auto it = e->_map.find(cur);
+            if (it != e->_map.end()) {
+                lam_value v = it->second;
+                if (todo.empty()) {  // we're at the last dotted id
+                    return v;
+                } else {  // go to next dot
+                    env = v.as_env();
+                    break;  // to outer loop
+                }
             }
-
-            // Look up 'cur', return it if it's the last segment.
-            // Otherwise update 'env' and loop for next segment.
-            for (auto e = env;;) {
-                auto it = e->_map.find(cur);
-                if (it != e->_map.end()) {
-                    lam_value v = it->second;
-                    if (todo.empty()) {  // we're at the last dotted id
-                        return v;
-                    } else {  // go to next dot
-                        env = v.as_env();
-                        break;  // to outer loop
-                    }
-                }
-                if (auto p = e->_parent) {
-                    e = e->_parent;
-                } else {
-                    return lam_make_error(SymbolNotFound, "symbol not found");
-                }
+            if (auto p = e->_parent) {
+                e = e->_parent;
+            } else {
+                return lam_make_error(SymbolNotFound, "symbol not found");
             }
         }
     }
-    lam_value lookup(const char* sym) { return _lookup(sym, this); }
+}
+lam_value lam_env::lookup(const char* sym) {
+    return _lookup(sym, this);
+}
 
-    static lam_type coerce_numeric_types(lam_value& a, lam_value& b) {
-        auto at = a.type();
-        auto bt = b.type();
-        if ((at != lam_type::Double && at != lam_type::Int) ||
-            (bt != lam_type::Double && bt != lam_type::Int)) {
-            assert(false);
-        }
-        if (at == bt) {
-            return at;
-        }
-        if (at == lam_type::Double) {
-            b = lam_make_double(b.as_int());
-        } else {
-            a = lam_make_double(a.as_int());
-        }
-        return lam_type::Double;
+static lam_type lam_coerce_numeric_types(lam_value& a, lam_value& b) {
+    auto at = a.type();
+    auto bt = b.type();
+    if ((at != lam_type::Double && at != lam_type::Int) ||
+        (bt != lam_type::Double && bt != lam_type::Int)) {
+        assert(false);
     }
-
-   protected:
-    struct string_hash {
-        using is_transparent = void;
-        [[nodiscard]] size_t operator()(const char* txt) const {
-            return std::hash<std::string_view>{}(txt);
-        }
-        [[nodiscard]] size_t operator()(std::string_view txt) const {
-            return std::hash<std::string_view>{}(txt);
-        }
-        [[nodiscard]] size_t operator()(const std::string& txt) const {
-            return std::hash<std::string>{}(txt);
-        }
-    };
-    std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
-    lam_env* _parent{nullptr};
-    const char* _name{nullptr};
-    bool _sealed{false};
-};
+    if (at == bt) {
+        return at;
+    }
+    if (at == lam_type::Double) {
+        b = lam_make_double(b.as_int());
+    } else {
+        a = lam_make_double(a.as_int());
+    }
+    return lam_type::Double;
+}
 
 static lam_value_or_tail_call invoke_applicative(lam_callable* call,
                                                  lam_env* env,
@@ -433,6 +411,9 @@ void lam_print(lam_value val) {
         case lam_type::Null:
             printf("null");
             break;
+        case lam_type::Opaque:
+            printf("Opaque{%" PRId64 "}", val.as_opaque());
+            break;
         case lam_type::Symbol:
             printf(":%s", val.as_symbol()->val());
             break;
@@ -477,10 +458,11 @@ lam_value lam_eval_call(lam_callable* call, lam_env* env, lam_value* args, size_
 }
 
 static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
-    assert(xt <= lam_type::BigInt);
-    assert(yt <= lam_type::BigInt);
-    static_assert(int(lam_type::BigInt) <= 3);
-    return (int(xt) << 2) | int(yt);
+    assert(xt == lam_type::Int || xt == lam_type::Double || xt == lam_type::BigInt);
+    assert(yt == lam_type::Int || yt == lam_type::Double || yt == lam_type::BigInt);
+    int xm = xt == lam_type::Int ? 0 : xt == lam_type::Double ? 1 : /*xt == lam_type::BigInt*/ 2;
+    int ym = yt == lam_type::Int ? 0 : yt == lam_type::Double ? 1 : /*yt == lam_type::BigInt*/ 2;
+    return (int(xm) << 2) | int(ym);
 }
 
 lam_env* lam_make_env_builtin(lam_hooks* hooks) {
@@ -799,7 +781,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     ret->bind_applicative(
         "+", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
-            switch (lam_env::coerce_numeric_types(a[0], a[1])) {
+            switch (lam_coerce_numeric_types(a[0], a[1])) {
                 case lam_type::Double:
                     return lam_make_double(a[0].dval + a[1].dval);
                 case lam_type::Int:

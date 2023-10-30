@@ -46,11 +46,6 @@ lam_value read_and_eval(const char* path) {
     return lam_make_error(1, "module not found");
 }
 
-static lam_hooks hooks{[](const char* p) {
-    auto p2 = std::string{p} + ".ll";
-    return read_and_eval(p2.c_str());
-}};
-
 int main() {
     read_and_eval("module.ll");
     read_and_eval("test.ll");
@@ -71,6 +66,15 @@ int main() {
         lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
+    }
+
+    if (1) {
+        lam_env* env = lam_make_env_default();
+        lam_value op = lam_make_opaque(22);
+        env->bind("val", op);
+        lam_print(op);
+        lam_value expr = lam_parse("(print val \"\\n\")");
+        lam_eval(expr, env);
     }
 
     if (1) {
