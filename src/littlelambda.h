@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mini-gmp.h"
+#include <cstdint>
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
@@ -101,7 +102,7 @@ union lam_value {
     lam_u64 uval;
     double dval;
 
-    using uint48_t = unsigned long long;
+    using uint48_t = std::uint64_t;
 
     constexpr int as_int() const {
         assert((uval & lam_Magic::Mask) == lam_Magic::TagInt);
@@ -196,7 +197,7 @@ struct lam_callable : lam_obj {
     size_t num_args;       // not including variadic
     const char* envsym;    // only for operatives, name to which we bind environment
     const char* variadic;  // if not null, bind extra arguments to this name
-    const void* context;   // extra data
+    void* context;   // extra data
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
@@ -229,6 +230,7 @@ struct lam_error : lam_obj {
 };
 
 struct lam_env : lam_obj {
+    lam_env();
     void bind_multiple(const char* keys[],
                        size_t nkeys,
                        lam_value* values,
@@ -238,8 +240,8 @@ struct lam_env : lam_obj {
     void seal();
     void bind(const char* name, lam_value value);
     void bind_applicative(const char* name, lam_invoke b);
-    void bind_operative(const char* name, lam_invoke b, const void* context = nullptr);
-    lam_value lookup(const char* sym);
+    void bind_operative(const char* name, lam_invoke b, void* context = nullptr);
+    lam_value lookup(const char* sym) const;
 };
 
 // Create values
@@ -253,6 +255,9 @@ static inline lam_value lam_make_int(int i) {
 static inline lam_value lam_make_opaque(unsigned long long u) {
     assert(u <= 0x0000ffff'ffffffff);
     return {.uval = u | lam_Magic::TagOpaque};
+}
+static inline lam_value lam_make_opaque(const void* p) {
+    return lam_make_opaque((unsigned long long)p);
 }
 static inline lam_value lam_make_null() {
     return {.uval = lam_Magic::ValueConstNull};
@@ -273,7 +278,7 @@ lam_value lam_make_list_v(const lam_value* values, size_t N);
 lam_value lam_make_env(lam_env* parent);
 
 struct lam_hooks {
-    using import_func = lam_value(const char*);
+    using import_func = lam_value(lam_hooks* hooks, const char*);
     import_func* import;
 };
 

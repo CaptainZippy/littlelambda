@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <cstdio>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "littlelambda.h"
 
@@ -21,12 +22,24 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
 
 static lam_value read_and_eval(const char* path);
 
+struct lam_hooks_impl : lam_hooks {
+    lam_hooks_impl() { import = &do_import; }
+    static lam_value do_import(lam_hooks* hooks, const char* p) {
+        auto self = static_cast<lam_hooks_impl*>(hooks);
+        auto v = self->_imports[p];
+        if (v.as_double() == 0) {
+            auto p2 = std::string{p} + ".ll";
+            v = read_and_eval(p2.c_str());
+            self->_imports[p] = v;
+        }
+        return v;
+    }
+    std::unordered_map<std::string, lam_value> _imports;
+};
+
 lam_env* lam_make_env_default() {
-    static lam_hooks hooks{[](const char* p) {
-        auto p2 = std::string{p} + ".ll";
-        return read_and_eval(p2.c_str());
-    }};
-    return lam_make_env_builtin(&hooks);
+    auto hooks = new lam_hooks_impl{};
+    return lam_make_env_builtin(hooks);
 }
 
 lam_value read_and_eval(const char* path) {

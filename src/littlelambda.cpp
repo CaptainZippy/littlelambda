@@ -260,9 +260,10 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
+lam_env::lam_env() : lam_obj(lam_type::Environment) {}
+
 struct lam_env_impl : lam_env {
-    lam_env_impl(lam_env* parent, const char* name)
-        : lam_env(lam_type::Environment), _parent{parent}, _name{name} {}
+    lam_env_impl(lam_env* parent, const char* name) : _parent{parent}, _name{name} {}
 
     struct string_hash {
         using is_transparent = void;
@@ -276,7 +277,7 @@ struct lam_env_impl : lam_env {
             return std::hash<std::string>{}(txt);
         }
     };
-    static lam_value _lookup(const char* symStr, lam_env* startEnv);
+    static lam_value _lookup(const char* symStr, const lam_env* startEnv);
     std::unordered_map<std::string, lam_value, string_hash, std::equal_to<>> _map;
     lam_env* _parent{nullptr};
     const char* _name{nullptr};
@@ -326,7 +327,7 @@ void lam_env::bind_applicative(const char* name, lam_invoke b) {
     self->_map.emplace(name, v);
 }
 
-void lam_env::bind_operative(const char* name, lam_invoke b, const void* context) {
+void lam_env::bind_operative(const char* name, lam_invoke b, void* context) {
     auto self = static_cast<lam_env_impl*>(this);
     assert(!self->_sealed);
     auto* d = callocPlus<lam_callable>(0);
@@ -342,9 +343,9 @@ void lam_env::bind_operative(const char* name, lam_invoke b, const void* context
 }
 
 // symStr is a possibly-dotted identifier
-lam_value lam_env_impl::_lookup(const char* symStr, lam_env* startEnv) {
+lam_value lam_env_impl::_lookup(const char* symStr, const lam_env* startEnv) {
     std::string_view todo{symStr};
-    auto env = static_cast<lam_env_impl*>(startEnv);
+    auto env = static_cast<const lam_env_impl*>(startEnv);
     while (1) {
         // Extract 'cur' - the next segment of the dotted path
         auto dot = todo.find('.', 0);
@@ -378,7 +379,7 @@ lam_value lam_env_impl::_lookup(const char* symStr, lam_env* startEnv) {
     }
 }
 
-lam_value lam_env::lookup(const char* sym) {
+lam_value lam_env::lookup(const char* sym) const {
     return lam_env_impl::_lookup(sym, this);
 }
 
@@ -447,7 +448,7 @@ void lam_print(lam_value val) {
             printf("null");
             break;
         case lam_type::Opaque:
-            printf("Opaque{%" PRId64 "}", val.as_opaque());
+            printf("Opaque{%" PRIu64 "}", val.as_opaque());
             break;
         case lam_type::Symbol:
             printf(":%s", val.as_symbol()->val());
@@ -504,14 +505,16 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     lam_env* ret = new lam_env_impl(nullptr, "builtin");
     if (hooks) {
         lam_env* _hooks = new lam_env_impl(nullptr, "_hooks");
+        static const char _import_func[] = "_import_func";
+        _hooks->bind(_import_func, lam_make_opaque(hooks));
         if (hooks->import) {
             _hooks->bind_operative(
                 "$_import",
                 [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
                     assert(n == 1);
                     auto modname = a[0].as_symbol();
-                    auto h = static_cast<const lam_hooks*>(call->context);
-                    return h->import(modname->val());
+                    auto hobj = static_cast<lam_hooks*>(call->context);
+                    return hobj->import(hobj, modname->val());
                 },
                 hooks);
         }
