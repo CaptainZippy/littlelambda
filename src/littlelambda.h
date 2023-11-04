@@ -309,4 +309,4 @@ lam_result lam_parse(const char* input);
 lam_result lam_parse(const char* input, const char** restart);
 
 /// Print the given value.
-void lam_print(lam_value val);
+void lam_print(lam_value val, const char* end=nullptr);

@@ -67,7 +67,6 @@ lam_result read_and_eval(const char* path) {
     return lam_result::fail(10000, "module not found");
 }
 
-
 static lam_value lam_parse_or_die(const char* input) {
     lam_result res = lam_parse(input);
     assert(res.code == 0);
@@ -97,12 +96,51 @@ int main() {
     }
 
     if (1) {
+        lam_value expr0a = lam_parse_or_die(
+            "($module bar\n"
+            "   ($define (area x y) (* x y))\n"
+            "   ($define (perim x y) (* 2 (+ x y))))");
+        lam_value expr0b = lam_parse_or_die(
+            "($module bar .)\n"
+            "($define (area x y) (* x y))\n"
+            "($define (perim x y) (* 2 (+ x y)))");
+
+        lam_value expr1a = lam_parse_or_die(
+            "($module foo\n"
+            "   ($define (area x y)\n"
+            "       (if (= x 0) 0 .)\n"
+            "       (* x y))\n"
+            "   ($define (perim x y) (* 2 (+ x y))))");
+        lam_print(expr1a, "\n");
+        lam_value expr1b = lam_parse_or_die(
+            "($module foo .)\n"
+            "($define (area x y)\n"
+            "   (if (= x 0) 0 .)\n"
+            "   (* x y))\n"
+            "($define (perim x y) (* 2 (+ x y)))");
+        lam_print(expr1b, "\n");
+    }
+
+    if (1) {
         lam_env* env = lam_make_env_default();
         lam_value op = lam_make_opaque(22);
         env->bind("val", op);
-        lam_print(op);
+        lam_print(op, "\n");
         lam_value expr = lam_parse_or_die("(print val \"\\n\")");
         lam_eval(expr, env);
+    }
+
+    if (1) {
+        lam_value expr0 = lam_parse_or_die("($let (a 10 b 20) (print a b \"\\n\"))");
+        lam_env* env = lam_make_env_default();
+        lam_eval(expr0, env);
+        assert(env->lookup("a").as_error());
+        lam_value expr1 = lam_parse_or_die(
+            "(begin\n"
+            "   ($let (c 30 d 40))\n"
+            "   (print c d \"\\n\"))");
+        lam_eval(expr1, env);
+        assert(env->lookup("c").as_int() == 30);
     }
 
     if (1) {

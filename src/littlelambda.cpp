@@ -58,7 +58,7 @@ lam_result lam_parse(const char* input, const char** restart) {
                 *restart = cur - 1;
                 if (!stack.empty()) {
                     return lam_result::fail(ParseUnexpectedEndOfFile,
-                                      "End of file in compound expression");
+                                            "End of file in compound expression");
                 }
                 return lam_result::fail(ParseEndOfInput, nullptr);
             }
@@ -91,24 +91,38 @@ lam_result lam_parse(const char* input, const char** restart) {
             }
             case ')': {
                 if (stack.empty()) {
-                    return lam_result::fail(ParseUnexpectedEndList, "End of list without beginning");
+                    return lam_result::fail(ParseUnexpectedEndList,
+                                            "End of list without beginning");
                 }
                 std::vector<lam_value> curList = std::move(stack.back());
                 stack.pop_back();
-                /*if (!curList.empty()) {
+                // A literal '.' at the end of a list is a shorthand for appending all
+                // statements until the end of the scope.
+                // e.g. "(foo x .) (a b c) (d e)" is equivalent to "(foo x (a b c) (d e))"
+                if (!curList.empty()) {
                     lam_value v = curList.back();
                     if (v.type() == lam_type::Symbol && strcmp(v.as_symbol()->val(), ".") == 0) {
                         std::vector<lam_value> tail;
-                        while (*cur) {
+                        for (bool slurp = true; slurp;) {
                             const char* next = nullptr;
-                            lam_value expr = lam_parse(cur, &next);
+                            lam_result res = lam_parse(cur, &next);
                             cur = next;
-                            tail.push_back(expr);
+                            switch (res.code) {
+                                case 0:
+                                    tail.push_back(res.value);
+                                    break;
+                                case ParseEndOfInput:
+                                case ParseUnexpectedEndList:
+                                    slurp = false;
+                                    break;
+                                default:
+                                    return res;
+                            }
                         }
                         curList.pop_back();
                         curList.insert(curList.end(), tail.begin(), tail.end());
                     }
-                }*/
+                }
                 auto l = lam_make_list_v(curList.data(), curList.size());
                 parsed.emplace(l);
                 break;
@@ -121,7 +135,7 @@ lam_result lam_parse(const char* input, const char** restart) {
                     switch (char c = *cur++) {
                         case 0: {
                             return lam_result::fail(ParseUnexpectedNull,
-                                              "Unexpected null when parsing string");
+                                                    "Unexpected null when parsing string");
                         }
                         case '\\': {
                             if (*cur == 'n') {
@@ -131,7 +145,7 @@ lam_result lam_parse(const char* input, const char** restart) {
                                 start = cur;
                             } else {
                                 return lam_result::fail(ParseUnexpectedEscape,
-                                                  "Unexpected escape sequence");
+                                                        "Unexpected escape sequence");
                             }
                             break;
                         }
@@ -455,7 +469,7 @@ static bool truthy(lam_value v) {
     return false;
 }
 
-void lam_print(lam_value val) {
+void lam_print(lam_value val, const char* end) {
     switch (val.type()) {
         case lam_type::Double:
             printf("%lf", val.as_double());
@@ -502,6 +516,9 @@ void lam_print(lam_value val) {
         default:
             assert(false);
     }
+    if (end) {
+        printf("%s", end);
+    }
 }
 
 lam_value lam_eval_call(lam_callable* call, lam_env* env, lam_value* args, size_t narg) {
@@ -534,7 +551,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     auto modname = a[0].as_symbol();
                     auto hobj = static_cast<lam_hooks*>(call->context);
                     auto res = hobj->import(hobj, modname->val());
-                    assert(res.code==0);
+                    assert(res.code == 0);
                     return res.value;
                 },
                 hooks);
@@ -544,6 +561,12 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     }
 
     ret->bind_operative(
+        // (define sym expr) Define 'sym' to be 'expr'
+        // (define (funcname args...) expr) Define function with the given arguments.
+        // (define ($operative args...) env expr) Define an operative with the given arguments.
+        //      When the operative is invoked, the callers environment is bound to the symbol 'env'.
+        // (define (funcname arg0 arg1 . rest) body) A literal '.' means the function is variadic
+        //      and any arguments after the required ones are bound to 'rest'
         "$define",
         [](lam_callable* call, lam_env* env, auto callArgs,
            auto numCallArgs) -> lam_value_or_tail_call {
@@ -600,6 +623,9 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         });
 
     ret->bind_operative(
+        // ($lambda (args...) body) Define a function
+        // ($lambda vargs body) Define a function taking an arbitrary list of arguments bound to
+        // 'vargs'
         "$lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             if (n != 2) {
                 return lam_make_error(WrongNumberOfArguments, "($lambda args body)");
@@ -636,6 +662,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         });
 
     ret->bind_operative(
+        // ($if cond iftrue iffalse) Evaluate cond and return iftrue or iffalse
         "$if", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 2);
             assert(n <= 3);
@@ -650,6 +677,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
         });
     ret->bind_operative(
+        // ($module modname body...) Define the module modname
         "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
@@ -662,6 +690,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return r;
         });
     ret->bind_operative(
+        // (import modname) Import the module modname and bind it to 'modname'
         "$import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             auto modname = a[0].as_symbol();
@@ -672,12 +701,15 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return result;
         });
     ret->bind_operative(
+        // (quote expr) Return expr without evaluating it
         "$quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             return a[0];
         });
-    ret->bind_operative(  // Though 'begin' appears like an applicative, the the implementation is
-                          // operative to get an opportunity to implement tail call optimization.
+    ret->bind_operative(
+        // (begin expr...) Sequentially evaluate expressions, result is the last evaluation.
+        // Though 'begin' appears like an applicative, the the implementation is
+        // operative to get an opportunity to implement tail call optimization.
         "begin", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             for (size_t i = 0; i < n - 1; ++i) {
@@ -686,9 +718,11 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             return {a[n - 1], env};  // tail call
         });
     ret->bind_operative(
+        // ($let (name0 val0 name1.. val1..) expr) Evaluate expr with the binding of pairs
+        // ($let (name0 val0 name1.. val1..)) Bind pairs in the current environment
         "$let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
-            assert(n >= 2);
-            lam_env* inner = inner = new lam_env_impl(env, nullptr);
+            assert(n >= 1);
+            lam_env* inner = (n == 1) ? env : new lam_env_impl(env, nullptr);
             lam_list* locals = a[0].as_list();
             assert(locals);
             assert(locals->len % 2 == 0);
@@ -700,12 +734,18 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                 inner->bind(s->val(), v);
             }
 
-            for (size_t i = 1; i < n - 1; ++i) {
-                lam_eval(a[i], env);
+            if (n == 1) {
+                return lam_make_null();
+            } else {
+                for (size_t i = 1; i < n - 1; ++i) {
+                    lam_eval(a[i], env);
+                }
+                return {a[n - 1], inner};  // tail call
             }
-            return {a[n - 1], inner};  // tail call
         });
     ret->bind_applicative(
+        // (eval expr) Evaluate expr in the current environment
+        // (eval expr env) Evaluate expr in the environment 'env'
         "eval", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             switch (n) {
                 case 1:
@@ -717,12 +757,14 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
         });
     ret->bind_applicative(
+        // (getenv) Return the current environment
         "getenv", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 0);
             return lam_make_value(env);
         });
 
     ret->bind_applicative(
+        // (print expr...) Print the given expressions
         "print", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             for (auto i = 0; i < n; ++i) {
                 lam_print(a[i]);
