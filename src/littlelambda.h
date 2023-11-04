@@ -1,7 +1,7 @@
 #pragma once
 
-#include "mini-gmp.h"
 #include <cstdint>
+#include "mini-gmp.h"
 
 // #include "../littlegc/littlegc.h"
 // #include <cassert>
@@ -25,12 +25,12 @@ extern void __debugbreak();  // Compiler Intrinsic
 /// Types a lam_value can contain.
 enum class lam_type {
     /*inline values*/
-    Null,    // 0
-    Double,  // 1
-    Int,     // 2
-    Opaque,  // 3
+    Null = 0,  // 0
+    Double,    // 1
+    Int,       // 2
+    Opaque,    // 3
     /*heap objects*/
-    BigInt,       // 10
+    BigInt = 10,  // 10
     String,       // 11
     Symbol,       // 12
     List,         // 13
@@ -197,7 +197,7 @@ struct lam_callable : lam_obj {
     size_t num_args;       // not including variadic
     const char* envsym;    // only for operatives, name to which we bind environment
     const char* variadic;  // if not null, bind extra arguments to this name
-    void* context;   // extra data
+    void* context;         // extra data
     // char name[num_args]; // variable length
     char** args() { return reinterpret_cast<char**>(this + 1); }
 };
@@ -277,8 +277,17 @@ lam_value lam_make_list_v(const lam_value* values, size_t N);
 
 lam_value lam_make_env(lam_env* parent);
 
+// If code==0, 'value' is valid, otherwise 'msg'. TODO union?
+struct lam_result {
+    static lam_result ok(lam_value v) { return {0, v, nullptr}; }
+    static lam_result fail(unsigned code, const char* msg) { return {code, {}, msg}; }
+    unsigned code;
+    lam_value value;
+    const char* msg;
+};
+
 struct lam_hooks {
-    using import_func = lam_value(lam_hooks* hooks, const char*);
+    using import_func = lam_result(lam_hooks* hooks, const char*);
     import_func* import;
 };
 
@@ -287,15 +296,17 @@ static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }
 
+
+
 /// Evaluate the given value in the given environment.
 lam_value lam_eval(lam_value val, lam_env* env);
 
 /// Parse and return a single possibly-compound value from the given input.
-lam_value lam_parse(const char* input);
+lam_result lam_parse(const char* input);
 
 /// Parse and return a single possibly-compound value from the given input.
 /// Sets the 'restart' pointer to the end of the input consumed.
-lam_value lam_parse(const char* input, const char** restart);
+lam_result lam_parse(const char* input, const char** restart);
 
 /// Print the given value.
 void lam_print(lam_value val);

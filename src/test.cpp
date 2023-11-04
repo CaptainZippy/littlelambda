@@ -20,19 +20,23 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-static lam_value read_and_eval(const char* path);
+static lam_result read_and_eval(const char* path);
 
 struct lam_hooks_impl : lam_hooks {
     lam_hooks_impl() { import = &do_import; }
-    static lam_value do_import(lam_hooks* hooks, const char* p) {
+    static lam_result do_import(lam_hooks* hooks, const char* p) {
         auto self = static_cast<lam_hooks_impl*>(hooks);
         auto v = self->_imports[p];
-        if (v.as_double() == 0) {
+        if (v.type() != lam_type::Environment) {
             auto p2 = std::string{p} + ".ll";
-            v = read_and_eval(p2.c_str());
-            self->_imports[p] = v;
+            auto res = read_and_eval(p2.c_str());
+            if (res.code != 0) {
+                return res;
+            }
+            v = res.value;
+            self->_imports[p] = res.value;
         }
-        return v;
+        return lam_result::ok(v);
     }
     std::unordered_map<std::string, lam_value> _imports;
 };
@@ -42,7 +46,7 @@ lam_env* lam_make_env_default() {
     return lam_make_env_builtin(hooks);
 }
 
-lam_value read_and_eval(const char* path) {
+lam_result read_and_eval(const char* path) {
     // TODO: accept path of loading module, accept environment, split out finding module
     std::vector<char> buf;
     if (slurp_file(path, buf) == 0) {
@@ -50,13 +54,24 @@ lam_value read_and_eval(const char* path) {
 
         for (const char* cur = buf.data(); *cur;) {
             const char* next = nullptr;
-            lam_value expr = lam_parse(cur, &next);
+            lam_result res = lam_parse(cur, &next);
+            if (res.code != 0) {
+                return res;
+            }
             cur = next;
-            lam_value obj = lam_eval(expr, env);
+            lam_value obj = lam_eval(res.value, env);
         }
-        return lam_make_value(reinterpret_cast<lam_obj*>(env));
+        auto v = lam_make_value(reinterpret_cast<lam_obj*>(env));
+        return lam_result::ok(v);
     }
-    return lam_make_error(1, "module not found");
+    return lam_result::fail(10000, "module not found");
+}
+
+
+static lam_value lam_parse_or_die(const char* input) {
+    lam_result res = lam_parse(input);
+    assert(res.code == 0);
+    return res.value;
 }
 
 int main() {
@@ -75,7 +90,7 @@ int main() {
 
     read_and_eval("01-Basic.ll");
     if (0) {
-        lam_value expr = lam_parse("(begin ($define r 10) (* 3.1 (* r r)))");
+        lam_value expr = lam_parse_or_die("(begin ($define r 10) (* 3.1 (* r r)))");
         lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);
         assert(obj.dval > 314);
@@ -86,12 +101,12 @@ int main() {
         lam_value op = lam_make_opaque(22);
         env->bind("val", op);
         lam_print(op);
-        lam_value expr = lam_parse("(print val \"\\n\")");
+        lam_value expr = lam_parse_or_die("(print val \"\\n\")");
         lam_eval(expr, env);
     }
 
     if (1) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             "(begin"
             " ($import math)"
             " ($define (area r) (* math.pi (* r r)))"
@@ -105,7 +120,7 @@ int main() {
     }
 
     if (0) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             "(begin"
             " ($import math)"
             " ($define (circle-area r) (* pi (* r r)))"
@@ -119,7 +134,7 @@ int main() {
     }
 
     if (1) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             "(begin"
             "   ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))"
             "   (fact (bigint 35)))");
@@ -133,7 +148,7 @@ int main() {
     }
 
     if (1) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             "(begin"
             "   ($define (twice x) (* 2 x))"
             "   ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))"
@@ -143,20 +158,20 @@ int main() {
         lam_value obj = lam_eval(expr, env);
         assert(obj.as_int() == 40);
 
-        expr = lam_parse("((repeat (repeat twice)) 10)");
+        expr = lam_parse_or_die("((repeat (repeat twice)) 10)");
         obj = lam_eval(expr, env);
         assert(obj.as_int() == 160);
     }
 
     if (0) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             "($define (range a b) ($if (= a b) ($quote()) (cons a (range(+ a 1) b))))"
             //"($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
     }
 
     if (1) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
             "  ($define ltest ($lambda args (print args)))"
@@ -177,7 +192,7 @@ int main() {
     }
 
     if (1) {
-        lam_value expr = lam_parse(
+        lam_value expr = lam_parse_or_die(
             //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             R"---(
             (begin

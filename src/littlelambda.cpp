@@ -11,6 +11,7 @@
 
 enum ErrorCode {
     OK = 0,
+    ParseEndOfInput,
     ParseUnexpectedNull,
     ParseUnexpectedSemiColon,
     ParseUnexpectedEscape,
@@ -40,7 +41,7 @@ static T* callocPlus(size_t extra) {
 }
 
 // Parse null terminated input
-lam_value lam_parse(const char* input, const char** restart) {
+lam_result lam_parse(const char* input, const char** restart) {
     *restart = input;
     // No recursion - explicit stack for lists.
     std::vector<std::vector<lam_value>> stack;
@@ -56,10 +57,10 @@ lam_value lam_parse(const char* input, const char** restart) {
             case '\0': {
                 *restart = cur - 1;
                 if (!stack.empty()) {
-                    return lam_make_error(ParseUnexpectedEndOfFile,
-                                          "End of file in compound expression");
+                    return lam_result::fail(ParseUnexpectedEndOfFile,
+                                      "End of file in compound expression");
                 }
-                return lam_make_null();
+                return lam_result::fail(ParseEndOfInput, nullptr);
             }
             // Whitespace
             case ' ':
@@ -71,7 +72,7 @@ lam_value lam_parse(const char* input, const char** restart) {
             // parse_comment ";;" to eol is comment
             case ';': {
                 if (*cur != ';') {
-                    return lam_make_error(ParseUnexpectedSemiColon, "Unexpected single ';'");
+                    return lam_result::fail(ParseUnexpectedSemiColon, "Unexpected single ';'");
                 }
                 // Look for the start of any newline sequence \r, \n, \r\n
                 while (*cur && !is_newline(*cur)) {
@@ -90,11 +91,26 @@ lam_value lam_parse(const char* input, const char** restart) {
             }
             case ')': {
                 if (stack.empty()) {
-                    return lam_make_error(ParseUnexpectedEndList, "End of list without beginning");
+                    return lam_result::fail(ParseUnexpectedEndList, "End of list without beginning");
                 }
-                auto l = lam_make_list_v(stack.back().data(), stack.back().size());
-                parsed.emplace(l);
+                std::vector<lam_value> curList = std::move(stack.back());
                 stack.pop_back();
+                /*if (!curList.empty()) {
+                    lam_value v = curList.back();
+                    if (v.type() == lam_type::Symbol && strcmp(v.as_symbol()->val(), ".") == 0) {
+                        std::vector<lam_value> tail;
+                        while (*cur) {
+                            const char* next = nullptr;
+                            lam_value expr = lam_parse(cur, &next);
+                            cur = next;
+                            tail.push_back(expr);
+                        }
+                        curList.pop_back();
+                        curList.insert(curList.end(), tail.begin(), tail.end());
+                    }
+                }*/
+                auto l = lam_make_list_v(curList.data(), curList.size());
+                parsed.emplace(l);
                 break;
             }
             // parse_string
@@ -104,8 +120,8 @@ lam_value lam_parse(const char* input, const char** restart) {
                 while (!parsed.has_value()) {
                     switch (char c = *cur++) {
                         case 0: {
-                            return lam_make_error(ParseUnexpectedNull,
-                                                  "Unexpected null when parsing string");
+                            return lam_result::fail(ParseUnexpectedNull,
+                                              "Unexpected null when parsing string");
                         }
                         case '\\': {
                             if (*cur == 'n') {
@@ -114,8 +130,8 @@ lam_value lam_parse(const char* input, const char** restart) {
                                 cur += 1;
                                 start = cur;
                             } else {
-                                return lam_make_error(ParseUnexpectedEscape,
-                                                      "Unexpected escape sequence");
+                                return lam_result::fail(ParseUnexpectedEscape,
+                                                  "Unexpected escape sequence");
                             }
                             break;
                         }
@@ -134,8 +150,11 @@ lam_value lam_parse(const char* input, const char** restart) {
             // parse_quote
             case '\'': {
                 const char* after = nullptr;
-                lam_value quoted = lam_parse(cur, &after);
-                lam_value val = lam_make_list_l(lam_make_symbol("$quote"), quoted);
+                lam_result quoted = lam_parse(cur, &after);
+                if (quoted.code != 0) {
+                    return quoted;
+                }
+                lam_value val = lam_make_list_l(lam_make_symbol("$quote"), quoted.value);
                 parsed.emplace(val);
                 cur = after;
                 break;
@@ -194,13 +213,13 @@ lam_value lam_parse(const char* input, const char** restart) {
                 stack[s - 1].push_back(v);
             } else {
                 *restart = cur;
-                return v;
+                return lam_result::ok(v);
             }
         }
     }
 }
 
-lam_value lam_parse(const char* input) {
+lam_result lam_parse(const char* input) {
     const char* restart = nullptr;
     auto r = lam_parse(input, &restart);
     assert(*restart == 0);
@@ -514,7 +533,9 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     assert(n == 1);
                     auto modname = a[0].as_symbol();
                     auto hobj = static_cast<lam_hooks*>(call->context);
-                    return hobj->import(hobj, modname->val());
+                    auto res = hobj->import(hobj, modname->val());
+                    assert(res.code==0);
+                    return res.value;
                 },
                 hooks);
         }

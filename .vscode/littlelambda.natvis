@@ -6,7 +6,7 @@
     <DisplayString Condition="type==13">List size={((lam_list*)this)-&gt;len}</DisplayString>
     <DisplayString Condition="type==14">Applicative {((lam_callable*)this)-&gt;name}</DisplayString>
     <DisplayString Condition="type==15">Operative {((lam_callable*)this)-&gt;name}</DisplayString>
-    <DisplayString Condition="type==16">Env {((lam_env*)this)-&gt;_name}</DisplayString>
+    <DisplayString Condition="type==16">Env {((lam_env_impl*)this)-&gt;_name}</DisplayString>
     <DisplayString Condition="type==17">Error {((lam_error*)this)-&gt;code,x} {((lam_error*)this)-&gt;msg}</DisplayString>
     <DisplayString>[FIXME] type={type}</DisplayString>
     <Expand>
@@ -14,9 +14,9 @@
         <Size>((lam_list*)this)-&gt;len</Size>
         <ValuePointer>(lam_value*)(((lam_list*)this)+1)</ValuePointer>
       </ArrayItems>
-      <ExpandedItem Condition="type==13">((lam_env*)this)->_map</ExpandedItem>
+      <ExpandedItem Condition="type==13">((lam_env_impl*)this)->_map</ExpandedItem>
       <Item Condition="type==9" Name="Parent">"--------------------"</Item>
-      <ExpandedItem Condition="type==13">((lam_env*)this)->_parent</ExpandedItem>
+      <ExpandedItem Condition="type==13">((lam_env_impl*)this)->_parent</ExpandedItem>
     </Expand>
   </Type>
   <Type Name="lam_value">
@@ -26,7 +26,7 @@
     <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==0)">false_value</DisplayString>
     <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==1)">true_value</DisplayString>
     <DisplayString Condition="((uval &amp; 0x7fff000000000000)==0x7ffe000000000000) &amp;&amp; ((uval &amp; 0xffffffffffff)==2)">null_value</DisplayString>
-    <DisplayString>FIXME</DisplayString>
+    <DisplayString>{dval}</DisplayString>
     <Expand>
       <ExpandedItem>*(lam_obj*)(uval &amp; 0xffffffffffff)</ExpandedItem>
     </Expand>
