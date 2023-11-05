@@ -147,10 +147,12 @@ int main() {
         lam_value expr = lam_parse_or_die(
             "(begin"
             " ($import math)"
+            " ($import codepoint)"
+            " ($define nl codepoint.newline)"
             " ($define (area r) (* math.pi (* r r)))"
             " ($define r 10)"
-            " (print ($let (r 20) (area r)) \"\\n\")"
-            " (print (area r) \"\\n\")"
+            " (print ($let (r 20) (area r)) codepoint.newline)"
+            " (print (area r) nl)"
             ")");
         lam_env* env = lam_make_env_default();
         lam_value obj = lam_eval(expr, env);

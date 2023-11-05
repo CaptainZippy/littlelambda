@@ -16,7 +16,6 @@ extern void __debugbreak();  // Compiler Intrinsic
 #error Fixme
 #endif
 
-#define assert2(COND)
 #define assert(COND)      \
     if (!(COND)) {        \
         lam_debugbreak(); \
@@ -139,7 +138,7 @@ union lam_value {
 
     lam_env* as_env() const { return try_cast_obj<lam_env>(uval); }
 
-    lam_callable* as_func() const {
+    lam_callable* as_callable() const {
         assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
         assert(obj->type == lam_type::Applicative || obj->type == lam_type::Operative);

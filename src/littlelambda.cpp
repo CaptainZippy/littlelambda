@@ -502,10 +502,10 @@ void lam_print(lam_value val, const char* end) {
             break;
         }
         case lam_type::Applicative:
-            printf("Ap{%s}", val.as_func()->name);
+            printf("Ap{%s}", val.as_callable()->name);
             break;
         case lam_type::Operative:
-            printf("Op{%s}", val.as_func()->name);
+            printf("Op{%s}", val.as_callable()->name);
             break;
         case lam_type::Environment:
             printf("Env{%p}", val.as_env());
@@ -561,11 +561,11 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     }
 
     ret->bind_operative(
-        // (define sym expr) Define 'sym' to be 'expr'
-        // (define (funcname args...) expr) Define function with the given arguments.
-        // (define ($operative args...) env expr) Define an operative with the given arguments.
+        // ($define sym expr) Define 'sym' to be 'expr'
+        // ($define (funcname args...) expr) Define function with the given arguments.
+        // ($define ($operative args...) env expr) Define an operative with the given arguments.
         //      When the operative is invoked, the callers environment is bound to the symbol 'env'.
-        // (define (funcname arg0 arg1 . rest) body) A literal '.' means the function is variadic
+        // ($define (funcname arg0 arg1 . rest) body) A literal '.' means the function is variadic
         //      and any arguments after the required ones are bound to 'rest'
         "$define",
         [](lam_callable* call, lam_env* env, auto callArgs,
@@ -695,7 +695,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             assert(n == 1);
             auto modname = a[0].as_symbol();
             lam_value imp = env->lookup("_hooks.$_import");
-            lam_callable* func = imp.as_func();
+            lam_callable* func = imp.as_callable();
             lam_value result = lam_eval_call(func, nullptr, a, 1);
             env->bind(modname->val(), result);
             return result;
@@ -804,8 +804,8 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "mapreduce",
         [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 3);
-            lam_callable* map = a[0].as_func();
-            lam_callable* red = a[1].as_func();
+            lam_callable* map = a[0].as_callable();
+            lam_callable* red = a[1].as_callable();
             lam_list* lst = a[2].as_list();
             assert(lst->len >= 1);
             lam_value acc[]{lam_eval_call(map, env, lst->first(), 1), {}};
@@ -1023,7 +1023,7 @@ lam_value lam_eval(lam_value val, lam_env* env) {
                         auto list = static_cast<lam_list*>(obj);
                         assert(list->len);
                         lam_value head = lam_eval(list->at(0), env);
-                        lam_callable* callable = head.as_func();
+                        lam_callable* callable = head.as_callable();
 
                         std::vector<lam_value> evaluatedArgs;
                         std::span<lam_value> args{list->first() + 1, list->len - 1};
