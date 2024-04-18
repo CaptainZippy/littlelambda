@@ -40,7 +40,8 @@ static T* callocPlus(size_t extra) {
     return reinterpret_cast<T*>(p);
 }
 
-// Parse null terminated input
+// Parse null terminated 'input'
+// Set 'restart' to the end of parsing.
 lam_result lam_parse(const char* input, const char** restart) {
     *restart = input;
     // No recursion - explicit stack for lists.
@@ -245,7 +246,6 @@ lam_value lam_make_symbol(const char* s, size_t n) {
     auto* d = callocPlus<lam_symbol>(len + 1);
     d->type = lam_type::Symbol;
     d->len = len;
-    d->cap = len;
     memcpy(d + 1, s, len);
     reinterpret_cast<char*>(d + 1)[len] = 0;
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
@@ -328,6 +328,7 @@ void lam_env::bind_multiple(const char* keys[],
                             size_t nvalues,
                             const char* variadic) {
     auto self = static_cast<lam_env_impl*>(this);
+    assert(!self->_sealed);
     assert((nvalues == nkeys) || (variadic && nvalues >= nkeys));
     for (size_t i = 0; i < nkeys; ++i) {
         bind(keys[i], values[i]);
@@ -808,6 +809,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             lam_callable* red = a[1].as_callable();
             lam_list* lst = a[2].as_list();
             assert(lst->len >= 1);
+            // acc[0] holds the accumulator. acc[1] is the 'map'ped value
             lam_value acc[]{lam_eval_call(map, env, lst->first(), 1), {}};
             for (size_t i = 1; i < lst->len; ++i) {
                 acc[1] = lam_eval_call(map, env, lst->first() + i, 1);
@@ -942,16 +944,6 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     assert(false);
             }
             return lam_value{};
-            /*assert(n == 2);
-                switch (lam_env::coerce_numeric_types(a[0], a[1])) {
-                    case lam_type::Double:
-                        return lam_make_double(a[0].dval - a[1].dval);
-                    case lam_type::Int:
-                        return lam_make_int(a[0].as_int() - a[1].as_int());
-                    default:
-                        assert(false);
-                        return lam_value{};
-                }*/
         });
     ret->bind_applicative(
         "/", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {

@@ -80,7 +80,7 @@ enum lam_Magic : lam_u64 {
     TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values
 
     Mask = 0x7fff0000'00000000,      // 1111
-    TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit value
+    TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit signed integer value
     TagObj = 0x7ffd0000'00000000,    // 1101 + 48 bit pointer to lam_obj
     TagConst = 0x7ffe0000'00000000,  // 1110 + lower bits indicate which constant: null, true, false
     TagOpaque = 0x7fff0000'00000000,  // 1111 + lower 48 bits are opaque data
@@ -204,9 +204,8 @@ struct lam_callable : lam_obj {
 /// A symbol.
 struct lam_symbol : lam_obj {
     lam_u64 len;
-    lam_u64 cap;
     const char* val() const { return reinterpret_cast<const char*>(this + 1); }
-    // char name[cap]; // variable length
+    // char name[len]; // variable length
 };
 
 /// A UTF8 string.
@@ -228,6 +227,7 @@ struct lam_error : lam_obj {
     const char* msg;
 };
 
+/// Environments map symbols to values.
 struct lam_env : lam_obj {
     lam_env();
     void bind_multiple(const char* keys[],
@@ -285,6 +285,7 @@ struct lam_result {
     const char* msg;
 };
 
+/// Functionality provided by external systems.
 struct lam_hooks {
     using import_func = lam_result(lam_hooks* hooks, const char*);
     import_func* import;
@@ -294,8 +295,6 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks = nullptr);
 static inline lam_value lam_make_value(lam_obj* obj) {
     return {.uval = lam_u64(obj) | lam_Magic::TagObj};
 }
-
-
 
 /// Evaluate the given value in the given environment.
 lam_value lam_eval(lam_value val, lam_env* env);
@@ -308,4 +307,4 @@ lam_result lam_parse(const char* input);
 lam_result lam_parse(const char* input, const char** restart);
 
 /// Print the given value.
-void lam_print(lam_value val, const char* end=nullptr);
+void lam_print(lam_value val, const char* end = nullptr);
