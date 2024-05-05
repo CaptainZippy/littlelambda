@@ -677,6 +677,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                 return lam_make_double(0);
             }
         });
+
     ret->bind_operative(
         // ($module modname body...) Define the module modname
         "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -690,6 +691,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             env->bind(modname->val(), lam_make_value(inner));
             return r;
         });
+
     ret->bind_operative(
         // (import modname) Import the module modname and bind it to 'modname'
         "$import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -701,12 +703,14 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             env->bind(modname->val(), result);
             return result;
         });
+
     ret->bind_operative(
         // (quote expr) Return expr without evaluating it
         "$quote", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             return a[0];
         });
+
     ret->bind_operative(
         // (begin expr...) Sequentially evaluate expressions, result is the last evaluation.
         // Though 'begin' appears like an applicative, the the implementation is
@@ -718,6 +722,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
             return {a[n - 1], env};  // tail call
         });
+
     ret->bind_operative(
         // ($let (name0 val0 name1.. val1..) expr) Evaluate expr with the binding of pairs
         // ($let (name0 val0 name1.. val1..)) Bind pairs in the current environment
@@ -744,6 +749,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                 return {a[n - 1], inner};  // tail call
             }
         });
+
     ret->bind_applicative(
         // (eval expr) Evaluate expr in the current environment
         // (eval expr env) Evaluate expr in the environment 'env'
@@ -757,6 +763,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     return lam_make_error(WrongNumberOfArguments, "(eval expr) or (eval expr env)");
             }
         });
+
     ret->bind_applicative(
         // (getenv) Return the current environment
         "getenv", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
@@ -881,6 +888,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     return lam_value{};
             }*/
         });
+
     ret->bind_applicative(
         "+", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -894,6 +902,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     return lam_value{};
             }
         });
+
     ret->bind_applicative(
         "-", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -945,6 +954,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
             return lam_value{};
         });
+
     ret->bind_applicative(
         "/", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -952,6 +962,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             assert(a[1].type() == lam_type::Double);
             return lam_make_double(a[0].dval / a[1].dval);
         });
+
     ret->bind_applicative(
         "<=", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 2);
@@ -996,6 +1007,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
             }
             return lam_make_int(c);
         });
+
     ret->bind("null", lam_make_null());
     ret->seal();
     return new lam_env_impl(ret, nullptr);
