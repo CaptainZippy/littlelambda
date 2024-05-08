@@ -38,14 +38,6 @@ struct lam_vm {
 };
 static lam_vm instance;
 
-void lam_ugc_visit(ugc_t* gc, ugc_header_t* obj) {}
-
-void lam_ugc_free(ugc_t* gc, ugc_header_t* obj) {}
-
-void lam_init() {
-    ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
-}
-
 // Allocate and zero "sizeof(T) + extra" bytes
 // Register T with the garbage collector
 template <typename T>
@@ -1087,4 +1079,59 @@ lam_value lam_eval(lam_value val, lam_env* env) {
                 return val;
         }
     }
+}
+
+static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
+    static_assert(offsetof(lam_obj, header) == 0);
+    lam_obj* obj = reinterpret_cast<lam_obj*>(header);
+    switch (obj->type) {
+        case lam_type::BigInt:
+        case lam_type::Symbol:
+        case lam_type::String:
+        case lam_type::Error:
+            break;
+        case lam_type::List: {
+            auto lst = static_cast<lam_list*>(obj);
+            for (lam_u64 i = 0; i < lst->len; ++i) {
+                lam_value v = lst->at(i);
+                if (auto o = v.obj_cast_value()) {
+                    ugc_visit(gc, &o->header);
+                }
+            }
+            break;
+        }
+        case lam_type::Operative:
+        case lam_type::Applicative: {
+            auto call = static_cast<lam_callable*>(obj);
+            ugc_visit(gc, &call->env->header);
+            if (auto o = call->body.obj_cast_value()) {
+                ugc_visit(gc, &o->header);
+            }
+            break;
+        }
+        case lam_type::Environment: {
+            auto env = static_cast<lam_env_impl*>(obj);
+            if (env->_parent) {
+                ugc_visit(gc, &env->_parent->header);
+            }
+            for (auto kv : env->_map) {
+                if (auto o = kv.second.obj_cast_value()) {
+                    ugc_visit(gc, &o->header);
+                }
+            }
+            break;
+        }
+        default:
+            lam_debugbreak();
+            break;
+    }
+}
+
+static void lam_ugc_free(ugc_t* gc, ugc_header_t* obj) {
+    static_assert(offsetof(lam_obj, header) == 0);
+    free(obj);
+}
+
+void lam_init() {
+    ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
 }

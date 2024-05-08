@@ -120,24 +120,31 @@ union lam_value {
     }
 
     template <typename ReqType>
-    static ReqType* try_cast_obj(lam_u64 val) {
+    static ReqType* obj_cast_value(lam_u64 val) {
         assert((val & lam_Magic::Mask) == lam_Magic::TagObj);
         lam_obj* obj = reinterpret_cast<lam_obj*>(val & ~lam_Magic::Mask);
         assert(obj->type == lam_Detail::TypeTrait<ReqType>::StaticType);
         return reinterpret_cast<ReqType*>(obj);
     }
 
-    lam_symbol* as_symbol() const { return try_cast_obj<lam_symbol>(uval); }
+    lam_obj* obj_cast_value() {
+        if ((uval & lam_Magic::Mask) == lam_Magic::TagObj) {
+            return reinterpret_cast<lam_obj*>(uval & ~lam_Magic::Mask);
+        }
+        return nullptr;
+    }
 
-    lam_string* as_string() const { return try_cast_obj<lam_string>(uval); }
+    lam_symbol* as_symbol() const { return obj_cast_value<lam_symbol>(uval); }
 
-    lam_list* as_list() const { return try_cast_obj<lam_list>(uval); }
+    lam_string* as_string() const { return obj_cast_value<lam_string>(uval); }
 
-    lam_bigint* as_bigint() const { return try_cast_obj<lam_bigint>(uval); }
+    lam_list* as_list() const { return obj_cast_value<lam_list>(uval); }
 
-    lam_error* as_error() const { return try_cast_obj<lam_error>(uval); }
+    lam_bigint* as_bigint() const { return obj_cast_value<lam_bigint>(uval); }
 
-    lam_env* as_env() const { return try_cast_obj<lam_env>(uval); }
+    lam_error* as_error() const { return obj_cast_value<lam_error>(uval); }
+
+    lam_env* as_env() const { return obj_cast_value<lam_env>(uval); }
 
     lam_callable* as_callable() const {
         assert((uval & lam_Magic::Mask) == lam_Magic::TagObj);
