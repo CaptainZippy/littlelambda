@@ -9,10 +9,12 @@ set(SRCS
     src/littlelambda.h
     src/mini-gmp.h
     src/mini-gmp.c
+    src/ugc.cpp
     test/01-Basic.ll
     test/math.ll
     test/module.ll
     test/test.ll
+    ugc/ugc.h
     .vscode/littlelambda.natvis)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRCS})

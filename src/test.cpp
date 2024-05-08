@@ -74,6 +74,7 @@ static lam_value lam_parse_or_die(const char* input) {
 }
 
 int main() {
+    lam_init();
     read_and_eval("module.ll");
     read_and_eval("test.ll");
     if (1) {

@@ -33,11 +33,27 @@ static bool is_newline(char c) {
     return c == '\r' || c == '\n';
 }
 
+struct lam_vm {
+    ugc_t gc;
+};
+static lam_vm instance;
+
+void lam_ugc_visit(ugc_t* gc, ugc_header_t* obj) {}
+
+void lam_ugc_free(ugc_t* gc, ugc_header_t* obj) {}
+
+void lam_init() {
+    ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
+}
+
 // Allocate and zero "sizeof(T) + extra" bytes
+// Register T with the garbage collector
 template <typename T>
 static T* callocPlus(size_t extra) {
     void* p = calloc(1, sizeof(T) + extra);
-    return reinterpret_cast<T*>(p);
+    auto o = reinterpret_cast<T*>(p);
+    ugc_register(&instance.gc, &o->header);
+    return o;
 }
 
 // Parse null terminated 'input'

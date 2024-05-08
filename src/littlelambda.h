@@ -2,9 +2,10 @@
 
 #include <cstdint>
 #include "mini-gmp.h"
+extern "C" {
+#include "../ugc/ugc.h"
+}
 
-// #include "../littlegc/littlegc.h"
-// #include <cassert>
 #if defined(_MSC_VER)
 extern void __debugbreak();  // Compiler Intrinsic
 #define lam_debugbreak() __debugbreak()
@@ -90,8 +91,8 @@ enum lam_Magic : lam_u64 {
 
 /// Base class of all heap allocated objects.
 struct lam_obj {
-    // lgc_object_t gcobj{};
     lam_obj(lam_type t) : type{t} {}
+    ugc_header_s header{};
     lam_type type;
 };
 
@@ -308,3 +309,6 @@ lam_result lam_parse(const char* input, const char** restart);
 
 /// Print the given value.
 void lam_print(lam_value val, const char* end = nullptr);
+
+/// Initialize.
+void lam_init();
