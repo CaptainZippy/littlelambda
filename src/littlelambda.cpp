@@ -35,6 +35,11 @@ static bool is_newline(char c) {
 
 struct lam_vm {
     ugc_t gc;
+    struct {
+        lam_u64 alloc_count;
+        lam_u64 free_count;
+        lam_u64 gc_iter_count;
+    } gc_stats;
 };
 static lam_vm instance;
 
@@ -45,6 +50,7 @@ static T* callocPlus(size_t extra) {
     void* p = calloc(1, sizeof(T) + extra);
     auto o = reinterpret_cast<T*>(p);
     ugc_register(&instance.gc, &o->header);
+    instance.gc_stats.alloc_count += 1;
     return o;
 }
 
@@ -304,6 +310,8 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
 lam_env::lam_env() : lam_obj(lam_type::Environment) {}
 
 struct lam_env_impl : lam_env {
+    inline void* operator new(std::size_t n, void* ptr) { return ptr; }
+
     lam_env_impl(lam_env* parent, const char* name) : _parent{parent}, _name{name} {}
 
     struct string_hash {
@@ -324,6 +332,15 @@ struct lam_env_impl : lam_env {
     const char* _name{nullptr};
     bool _sealed{false};
 };
+
+static lam_env* lam_new_env(lam_env* parent, const char* name) {
+    auto* d = callocPlus<lam_env_impl>(sizeof(lam_env_impl));
+    return new (d) lam_env_impl(parent, name);
+}
+
+lam_value lam_make_env(lam_env* parent, const char* name) {
+    return {.uval = lam_u64(lam_new_env(parent, name)) | lam_Magic::TagObj};
+}
 
 void lam_env::seal() {
     auto self = static_cast<lam_env_impl*>(this);
@@ -448,7 +465,7 @@ static lam_value_or_tail_call invoke_applicative(lam_callable* call,
                                                  lam_value* args,
                                                  auto narg) {
     assert(call->envsym == nullptr);
-    lam_env* inner = new lam_env_impl(call->env, nullptr);
+    lam_env* inner = lam_new_env(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     return {call->body, inner};
 }
@@ -457,7 +474,7 @@ static lam_value_or_tail_call invoke_operative(lam_callable* call,
                                                lam_env* env,
                                                lam_value* args,
                                                auto narg) {
-    lam_env* inner = new lam_env_impl(call->env, nullptr);
+    lam_env* inner = lam_new_env(call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     assert(call->envsym);
     inner->bind(call->envsym, lam_make_value(env));
@@ -547,9 +564,9 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
 }
 
 lam_env* lam_make_env_builtin(lam_hooks* hooks) {
-    lam_env* ret = new lam_env_impl(nullptr, "builtin");
+    lam_env* ret = lam_new_env(nullptr, "builtin");
     if (hooks) {
-        lam_env* _hooks = new lam_env_impl(nullptr, "_hooks");
+        lam_env* _hooks = lam_new_env(nullptr, "_hooks");
         static const char _import_func[] = "_import_func";
         _hooks->bind(_import_func, lam_make_opaque(hooks));
         if (hooks->import) {
@@ -691,7 +708,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
-            lam_env* inner = new lam_env_impl(env, modname->val());
+            lam_env* inner = lam_new_env(env, modname->val());
             lam_value r = lam_make_null();
             for (size_t i = 1; i < n; i += 1) {
                 r = lam_eval(a[i], inner);
@@ -736,7 +753,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         // ($let (name0 val0 name1.. val1..)) Bind pairs in the current environment
         "$let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
-            lam_env* inner = (n == 1) ? env : new lam_env_impl(env, nullptr);
+            lam_env* inner = (n == 1) ? env : lam_new_env(env, nullptr);
             lam_list* locals = a[0].as_list();
             assert(locals);
             assert(locals->len % 2 == 0);
@@ -1018,10 +1035,11 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
 
     ret->bind("null", lam_make_null());
     ret->seal();
-    return new lam_env_impl(ret, nullptr);
+    return lam_new_env(ret, nullptr);
 }
 
 lam_value lam_eval(lam_value val, lam_env* env) {
+    // TODO    ugc_collect(&instance.gc);
     while (true) {
         switch (val.uval & lam_Magic::Mask) {
             case lam_Magic::TagObj: {
@@ -1082,56 +1100,72 @@ lam_value lam_eval(lam_value val, lam_env* env) {
 }
 
 static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
-    static_assert(offsetof(lam_obj, header) == 0);
-    lam_obj* obj = reinterpret_cast<lam_obj*>(header);
-    switch (obj->type) {
-        case lam_type::BigInt:
-        case lam_type::Symbol:
-        case lam_type::String:
-        case lam_type::Error:
-            break;
-        case lam_type::List: {
-            auto lst = static_cast<lam_list*>(obj);
-            for (lam_u64 i = 0; i < lst->len; ++i) {
-                lam_value v = lst->at(i);
-                if (auto o = v.obj_cast_value()) {
+    if (header == nullptr) {
+        // todo scan root
+    } else {
+        static_assert(offsetof(lam_obj, header) == 0);
+        lam_obj* obj = reinterpret_cast<lam_obj*>(header);
+        switch (obj->type) {
+            case lam_type::BigInt:
+            case lam_type::Symbol:
+            case lam_type::String:
+            case lam_type::Error:
+                break;
+            case lam_type::List: {
+                auto lst = static_cast<lam_list*>(obj);
+                for (lam_u64 i = 0; i < lst->len; ++i) {
+                    lam_value v = lst->at(i);
+                    if (auto o = v.obj_cast_value()) {
+                        ugc_visit(gc, &o->header);
+                    }
+                }
+                break;
+            }
+            case lam_type::Operative:
+            case lam_type::Applicative: {
+                auto call = static_cast<lam_callable*>(obj);
+                ugc_visit(gc, &call->env->header);
+                if (auto o = call->body.obj_cast_value()) {
                     ugc_visit(gc, &o->header);
                 }
+                break;
             }
-            break;
-        }
-        case lam_type::Operative:
-        case lam_type::Applicative: {
-            auto call = static_cast<lam_callable*>(obj);
-            ugc_visit(gc, &call->env->header);
-            if (auto o = call->body.obj_cast_value()) {
-                ugc_visit(gc, &o->header);
-            }
-            break;
-        }
-        case lam_type::Environment: {
-            auto env = static_cast<lam_env_impl*>(obj);
-            if (env->_parent) {
-                ugc_visit(gc, &env->_parent->header);
-            }
-            for (auto kv : env->_map) {
-                if (auto o = kv.second.obj_cast_value()) {
-                    ugc_visit(gc, &o->header);
+            case lam_type::Environment: {
+                auto env = static_cast<lam_env_impl*>(obj);
+                if (env->_parent) {
+                    ugc_visit(gc, &env->_parent->header);
                 }
+                for (auto kv : env->_map) {
+                    if (auto o = kv.second.obj_cast_value()) {
+                        ugc_visit(gc, &o->header);
+                    }
+                }
+                break;
             }
-            break;
+            default:
+                lam_debugbreak();
+                break;
         }
-        default:
-            lam_debugbreak();
-            break;
     }
 }
 
-static void lam_ugc_free(ugc_t* gc, ugc_header_t* obj) {
+static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
     static_assert(offsetof(lam_obj, header) == 0);
-    free(obj);
+    auto obj = reinterpret_cast<lam_obj*>(gobj);
+    auto vm = reinterpret_cast<lam_vm*>(gc->userdata);
+    vm->gc_stats.free_count += 1;
+    switch (obj->type) {
+        case lam_type::Environment:
+            static_cast<lam_env_impl*>(obj)->~lam_env_impl();
+            break;
+        case lam_type::BigInt:
+            mpz_clear(static_cast<lam_bigint*>(obj)->mp);
+            break;
+    }
+    free(gobj);
 }
 
 void lam_init() {
     ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
+    instance.gc.userdata = &instance;
 }

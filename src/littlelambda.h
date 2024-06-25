@@ -282,7 +282,7 @@ static inline lam_value lam_make_list_l(Args... args) {
 
 lam_value lam_make_list_v(const lam_value* values, size_t N);
 
-lam_value lam_make_env(lam_env* parent);
+lam_value lam_make_env(lam_env* parent, const char* name);
 
 // If code==0, 'value' is valid, otherwise 'msg'. TODO union?
 struct lam_result {
