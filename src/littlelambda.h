@@ -21,6 +21,10 @@ extern void __debugbreak();  // Compiler Intrinsic
     if (!(COND)) {        \
         lam_debugbreak(); \
     }
+#define assert2(COND, MSG)\
+    if (!(COND)) {        \
+        lam_debugbreak(); \
+    }
 
 /// Types a lam_value can contain.
 enum class lam_type {
@@ -307,12 +311,10 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 /// Evaluate the given value in the given environment.
 lam_value lam_eval(lam_value val, lam_env* env);
 
-/// Parse and return a single possibly-compound value from the given input.
-lam_result lam_parse(const char* input);
-
-/// Parse and return a single possibly-compound value from the given input.
-/// Sets the 'restart' pointer to the end of the input consumed.
-lam_result lam_parse(const char* input, const char** restart);
+/// Parse and return the first value from the given input.
+/// Sets the 'restart' pointer to past the end of the input consumed.
+/// Call this multiple times to consume all input.
+lam_result lam_parse(const char* input, const char* end, const char** restart);
 
 /// Print the given value.
 void lam_print(lam_value val, const char* end = nullptr);

@@ -1,5 +1,6 @@
 #include "littlelambda.h"
 #include <inttypes.h>
+#include <charconv>
 #include <cstring>
 #include <optional>
 #include <span>
@@ -32,6 +33,18 @@ static bool is_word_boundary(char c) {
 static bool is_newline(char c) {
     return c == '\r' || c == '\n';
 }
+static bool is_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+template <typename T, typename... V>
+static bool _try_parse_as(const char* start, const char* end, T& out, V... v) {
+    auto [ptr, rc] = std::from_chars(start, end, out, v...);
+    if (rc == std::errc{} && ptr == end) {
+        return true;
+    }
+    return false;
+}
 
 struct lam_vm {
     ugc_t gc;
@@ -56,15 +69,15 @@ static T* callocPlus(size_t extra) {
 
 // Parse null terminated 'input'
 // Set 'restart' to the end of parsing.
-lam_result lam_parse(const char* input, const char** restart) {
+lam_result lam_parse(const char* input, const char* endInput, const char** restart) {
     *restart = input;
     // No recursion - explicit stack for lists.
     std::vector<std::vector<lam_value>> stack;
-    for (const char* cur = input; true;) {
-        const char* startCur = cur;
+    for (const char* cur = input; cur < endInput;) {
         std::optional<lam_value> parsed{};
+        const char* startCur = cur;
 
-        // Try to parse an single va;ie & put it into 'parsed'
+        // Try to parse an single value & put it into 'parsed'
         // After this switch, there is a common block to manage the stack
         // and update the restart point etc.
         switch (*cur++) {
@@ -86,15 +99,15 @@ lam_result lam_parse(const char* input, const char** restart) {
             }
             // parse_comment ";;" to eol is comment
             case ';': {
-                if (*cur != ';') {
+                if (cur >= endInput || *cur != ';') {
                     return lam_result::fail(ParseUnexpectedSemiColon, "Unexpected single ';'");
                 }
                 // Look for the start of any newline sequence \r, \n, \r\n
-                while (*cur && !is_newline(*cur)) {
+                while (cur < endInput && !is_newline(*cur)) {
                     ++cur;
                 }
                 // Consume any sequence of \r,\n
-                while (*cur && is_newline(*cur)) {
+                while (cur < endInput && is_newline(*cur)) {
                     ++cur;
                 }
                 break;
@@ -118,9 +131,9 @@ lam_result lam_parse(const char* input, const char** restart) {
                     lam_value v = curList.back();
                     if (v.type() == lam_type::Symbol && strcmp(v.as_symbol()->val(), ".") == 0) {
                         std::vector<lam_value> tail;
-                        for (bool slurp = true; slurp;) {
+                        for (bool slurp = true; slurp && cur < endInput;) {
                             const char* next = nullptr;
-                            lam_result res = lam_parse(cur, &next);
+                            lam_result res = lam_parse(cur, endInput, &next);
                             cur = next;
                             switch (res.code) {
                                 case 0:
@@ -145,17 +158,17 @@ lam_result lam_parse(const char* input, const char** restart) {
             // parse_string
             case '"': {
                 const char* start = cur;  // start of the current run
-                std::string res;
-                while (!parsed.has_value()) {
+                std::string acc;          // accumulator for current string
+                while (!parsed.has_value() && cur < endInput) {
                     switch (char c = *cur++) {
                         case 0: {
                             return lam_result::fail(ParseUnexpectedNull,
                                                     "Unexpected null when parsing string");
                         }
                         case '\\': {
-                            if (*cur == 'n') {
-                                res.append(start, cur - 1);
-                                res.push_back('\n');
+                            if (cur < endInput && *cur == 'n') {
+                                acc.append(start, cur - 1);
+                                acc.push_back('\n');
                                 cur += 1;
                                 start = cur;
                             } else {
@@ -165,8 +178,8 @@ lam_result lam_parse(const char* input, const char** restart) {
                             break;
                         }
                         case '"': {
-                            res.append(start, cur - 1);
-                            auto s = lam_make_string(res.data(), res.size());
+                            acc.append(start, cur - 1);
+                            auto s = lam_make_string(acc.data(), acc.size());
                             parsed.emplace(s);
                             break;
                         }
@@ -179,7 +192,7 @@ lam_result lam_parse(const char* input, const char** restart) {
             // parse_quote
             case '\'': {
                 const char* after = nullptr;
-                lam_result quoted = lam_parse(cur, &after);
+                lam_result quoted = lam_parse(cur, endInput, &after);
                 if (quoted.code != 0) {
                     return quoted;
                 }
@@ -209,28 +222,27 @@ lam_result lam_parse(const char* input, const char** restart) {
                 //}
             // parse_number parse_symbol
             default: {
-                while (!is_word_boundary(*cur)) {
+                while (cur < endInput && !is_word_boundary(*cur)) {
                     ++cur;
                 }
-                const char* end = cur;
-                char* endparse;
-                long asInt = strtol(startCur, &endparse, 10);
-                if (endparse == end) {
+
+                // Todo: tighten these checks. Numbers must begin with - or . or digit?
+                if (cur > startCur && is_alpha(startCur[0])) {
+                    parsed.emplace(lam_make_symbol(startCur, cur - startCur));
+                } else if (long asInt; _try_parse_as<long>(startCur, cur, asInt, 10)) {
                     parsed.emplace(lam_make_int(asInt));
+                } else if (double asDbl; _try_parse_as<double>(startCur, cur, asDbl)) {
+                    parsed.emplace(lam_make_double(asDbl));
                 } else {
-                    double asDbl = strtold(startCur, &endparse);
-                    if (endparse == end) {
-                        parsed.emplace(lam_make_double(asDbl));
-                    } else {
-                        parsed.emplace(lam_make_symbol(startCur, end - startCur));
-                    }
+                    parsed.emplace(lam_make_symbol(startCur, cur - startCur));
                 }
+
                 break;
             }
         }
 
         // Consume any whitespace & advance restart point
-        while (is_white(*cur)) {
+        while (cur < endInput && is_white(*cur)) {
             ++cur;
         }
         *restart = cur;
@@ -246,13 +258,10 @@ lam_result lam_parse(const char* input, const char** restart) {
             }
         }
     }
-}
-
-lam_result lam_parse(const char* input) {
-    const char* restart = nullptr;
-    auto r = lam_parse(input, &restart);
-    assert(*restart == 0);
-    return r;
+    if (stack.size()) {
+        return lam_result::fail(ParseEndOfInput, "Unexpected Eof");
+    }
+    return lam_result::ok(lam_make_int(0));
 }
 
 lam_value lam_make_symbol(const char* s, size_t n) {

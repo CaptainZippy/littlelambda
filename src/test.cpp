@@ -16,7 +16,6 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
         buf.insert(buf.end(), &b[0], &b[n]);
     }
     fclose(fin);
-    buf.push_back(0);
     return 0;
 }
 
@@ -51,10 +50,10 @@ lam_result read_and_eval(const char* path) {
     std::vector<char> buf;
     if (slurp_file(path, buf) == 0) {
         auto env = lam_make_env_default();
-
-        for (const char* cur = buf.data(); *cur;) {
+        const char* bufEnd = buf.data() + buf.size();
+        for (const char* cur = buf.data(); cur < bufEnd;) {
             const char* next = nullptr;
-            lam_result res = lam_parse(cur, &next);
+            lam_result res = lam_parse(cur, bufEnd, &next);
             if (res.code != 0) {
                 return res;
             }
@@ -67,10 +66,18 @@ lam_result read_and_eval(const char* path) {
     return lam_result::fail(10000, "module not found");
 }
 
-static lam_value lam_parse_or_die(const char* input) {
-    lam_result res = lam_parse(input);
-    assert(res.code == 0);
-    return res.value;
+static lam_value _lam_parse_or_die(const char* input, int N) {
+    const char* restart = nullptr;
+    const char* end = input + N;
+    auto r = lam_parse(input, end, &restart);
+    assert2(restart == end, "Input was not consumed");
+    assert(r.code == 0);
+    return r.value;
+}
+
+template<int N>
+static lam_value lam_parse_or_die(const char (&input)[N]) {
+    return _lam_parse_or_die(input, N-1); // not null terminator
 }
 
 int main() {
@@ -78,14 +85,14 @@ int main() {
     read_and_eval("module.ll");
     read_and_eval("test.ll");
     if (1) {
-        lam_parse("hello");
-        lam_parse("\"world\"");
-        lam_parse("12");
-        lam_parse("12.2");
-        lam_parse("(hello world)");
-        lam_parse("(hello (* num 141.0) world)");
-        lam_parse("(begin ($define r 10) (* 3.4 (* r r)))");
-        lam_parse("(begin ($define r null) (print r))");
+        lam_parse_or_die("hello");
+        lam_parse_or_die("\"world\"");
+        lam_parse_or_die("12");
+        lam_parse_or_die("12.2");
+        lam_parse_or_die("(hello world)");
+        lam_parse_or_die("(hello (* num 141.0) world)");
+        lam_parse_or_die("(begin ($define r 10) (* 3.4 (* r r)))");
+        lam_parse_or_die("(begin ($define r null) (print r))");
     }
 
     read_and_eval("01-Basic.ll");
