@@ -12,6 +12,7 @@
 
 enum ErrorCode {
     OK = 0,
+    GenericFailure,
     ParseEndOfInput,
     ParseUnexpectedNull,
     ParseUnexpectedSemiColon,
@@ -19,10 +20,13 @@ enum ErrorCode {
     ParseUnexpectedEndOfFile,
     ParseUnexpectedEndList,
     ParseMissingSymbolName,
+    ImportNotFound,
     SymbolNotFound,
     WrongNumberOfArguments,
     NonNumericArguments,
 };
+
+static lam_value lam_eval(lam_value val, lam_env* env);
 
 static bool is_white(char c) {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
@@ -48,6 +52,9 @@ static bool _try_parse_as(const char* start, const char* end, T& out, V... v) {
 
 struct lam_vm {
     ugc_t gc;
+    lam_hooks hooks;
+    lam_env* root;
+    std::unordered_map<std::string, lam_value> imports;
     struct {
         lam_u64 alloc_count;
         lam_u64 free_count;
@@ -69,7 +76,7 @@ static T* callocPlus(size_t extra) {
 
 // Parse null terminated 'input'
 // Set 'restart' to the end of parsing.
-lam_result lam_parse(const char* input, const char* endInput, const char** restart) {
+lam_result lam_parse(lam_vm* vm, const char* input, const char* endInput, const char** restart) {
     *restart = input;
     // No recursion - explicit stack for lists.
     std::vector<std::vector<lam_value>> stack;
@@ -133,7 +140,7 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
                         std::vector<lam_value> tail;
                         for (bool slurp = true; slurp && cur < endInput;) {
                             const char* next = nullptr;
-                            lam_result res = lam_parse(cur, endInput, &next);
+                            lam_result res = lam_parse(vm, cur, endInput, &next);
                             cur = next;
                             switch (res.code) {
                                 case 0:
@@ -151,7 +158,7 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
                         curList.insert(curList.end(), tail.begin(), tail.end());
                     }
                 }
-                auto l = lam_make_list_v(curList.data(), curList.size());
+                auto l = lam_make_list_v(vm, curList.data(), curList.size());
                 parsed.emplace(l);
                 break;
             }
@@ -179,7 +186,7 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
                         }
                         case '"': {
                             acc.append(start, cur - 1);
-                            auto s = lam_make_string(acc.data(), acc.size());
+                            auto s = lam_make_string(vm, acc.data(), acc.size());
                             parsed.emplace(s);
                             break;
                         }
@@ -192,11 +199,11 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
             // parse_quote
             case '\'': {
                 const char* after = nullptr;
-                lam_result quoted = lam_parse(cur, endInput, &after);
+                lam_result quoted = lam_parse(vm, cur, endInput, &after);
                 if (quoted.code != 0) {
                     return quoted;
                 }
-                lam_value val = lam_make_list_l(lam_make_symbol("$quote"), quoted.value);
+                lam_value val = lam_make_list_l(vm, lam_make_symbol(vm, "$quote"), quoted.value);
                 parsed.emplace(val);
                 cur = after;
                 break;
@@ -228,13 +235,13 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
 
                 // Todo: tighten these checks. Numbers must begin with - or . or digit?
                 if (cur > startCur && is_alpha(startCur[0])) {
-                    parsed.emplace(lam_make_symbol(startCur, cur - startCur));
+                    parsed.emplace(lam_make_symbol(vm, startCur, cur - startCur));
                 } else if (long asInt; _try_parse_as<long>(startCur, cur, asInt, 10)) {
                     parsed.emplace(lam_make_int(asInt));
                 } else if (double asDbl; _try_parse_as<double>(startCur, cur, asDbl)) {
                     parsed.emplace(lam_make_double(asDbl));
                 } else {
-                    parsed.emplace(lam_make_symbol(startCur, cur - startCur));
+                    parsed.emplace(lam_make_symbol(vm, startCur, cur - startCur));
                 }
 
                 break;
@@ -264,7 +271,7 @@ lam_result lam_parse(const char* input, const char* endInput, const char** resta
     return lam_result::ok(lam_make_int(0));
 }
 
-lam_value lam_make_symbol(const char* s, size_t n) {
+lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = callocPlus<lam_symbol>(len + 1);
     d->type = lam_type::Symbol;
@@ -274,7 +281,7 @@ lam_value lam_make_symbol(const char* s, size_t n) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_string(const char* s, size_t n) {
+lam_value lam_make_string(lam_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = callocPlus<lam_string>(len + 1);
     d->type = lam_type::String;
@@ -284,7 +291,7 @@ lam_value lam_make_string(const char* s, size_t n) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_bigint(int i) {
+lam_value lam_make_bigint(lam_vm* vm, int i) {
     auto* d = callocPlus<lam_bigint>(0);
     d->type = lam_type::BigInt;
     mpz_init_set_si(d->mp, i);
@@ -299,7 +306,7 @@ lam_value lam_make_error(unsigned code, const char* msg) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_bigint(mpz_t m) {
+lam_value lam_make_bigint(lam_vm* vm, mpz_t m) {
     auto* d = callocPlus<lam_bigint>(0);
     d->type = lam_type::BigInt;
     static_assert(sizeof(d->mp) == 16);
@@ -307,7 +314,7 @@ lam_value lam_make_bigint(mpz_t m) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_list_v(const lam_value* values, size_t len) {
+lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t len) {
     auto* d = callocPlus<lam_list>(len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
@@ -316,12 +323,13 @@ lam_value lam_make_list_v(const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_env::lam_env() : lam_obj(lam_type::Environment) {}
+lam_env::lam_env(lam_vm* v) : lam_obj(lam_type::Environment), vm(v) {}
 
 struct lam_env_impl : lam_env {
     inline void* operator new(std::size_t n, void* ptr) { return ptr; }
 
-    lam_env_impl(lam_env* parent, const char* name) : _parent{parent}, _name{name} {}
+    lam_env_impl(lam_vm* vm, lam_env* parent, const char* name)
+        : lam_env(vm), _parent{parent}, _name{name} {}
 
     struct string_hash {
         using is_transparent = void;
@@ -342,13 +350,14 @@ struct lam_env_impl : lam_env {
     bool _sealed{false};
 };
 
-static lam_env* lam_new_env(lam_env* parent, const char* name) {
+static lam_env* lam_new_env(lam_vm* vm, lam_env* parent, const char* name) {
+    assert(parent == nullptr || vm == static_cast<lam_env_impl*>(parent)->vm);
     auto* d = callocPlus<lam_env_impl>(sizeof(lam_env_impl));
-    return new (d) lam_env_impl(parent, name);
+    return new (d) lam_env_impl(vm, parent, name);
 }
 
-lam_value lam_make_env(lam_env* parent, const char* name) {
-    return {.uval = lam_u64(lam_new_env(parent, name)) | lam_Magic::TagObj};
+lam_value lam_make_env(lam_vm* vm, lam_env* parent, const char* name) {
+    return {.uval = lam_u64(lam_new_env(vm, parent, name)) | lam_Magic::TagObj};
 }
 
 void lam_env::seal() {
@@ -368,7 +377,7 @@ void lam_env::bind_multiple(const char* keys[],
         bind(keys[i], values[i]);
     }
     if (variadic) {
-        lam_value kw = lam_make_list_v(values + nkeys, nvalues - nkeys);
+        lam_value kw = lam_make_list_v(vm, values + nkeys, nvalues - nkeys);
         bind(variadic, kw);
     }
 }
@@ -474,7 +483,7 @@ static lam_value_or_tail_call invoke_applicative(lam_callable* call,
                                                  lam_value* args,
                                                  auto narg) {
     assert(call->envsym == nullptr);
-    lam_env* inner = lam_new_env(call->env, nullptr);
+    lam_env* inner = lam_new_env(env->vm, call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     return {call->body, inner};
 }
@@ -483,7 +492,7 @@ static lam_value_or_tail_call invoke_operative(lam_callable* call,
                                                lam_env* env,
                                                lam_value* args,
                                                auto narg) {
-    lam_env* inner = lam_new_env(call->env, nullptr);
+    lam_env* inner = lam_new_env(env->vm, call->env, nullptr);
     inner->bind_multiple((const char**)call->args(), call->num_args, args, narg, call->variadic);
     assert(call->envsym);
     inner->bind(call->envsym, lam_make_value(env));
@@ -572,7 +581,8 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
     return (int(xm) << 2) | int(ym);
 }
 
-lam_env* lam_make_env_builtin(lam_hooks* hooks) {
+#if false
+static lam_env* lam_make_env_builtin(lam_vm* vm) {
     lam_env* ret = lam_new_env(nullptr, "builtin");
     if (hooks) {
         lam_env* _hooks = lam_new_env(nullptr, "_hooks");
@@ -594,6 +604,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         _hooks->seal();
         ret->bind("_hooks", lam_make_value(_hooks));
     }
+#endif
 
     ret->bind_operative(
         // ($define sym expr) Define 'sym' to be 'expr'
@@ -717,7 +728,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "$module", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
             auto modname = a[0].as_symbol();
-            lam_env* inner = lam_new_env(env, modname->val());
+            lam_env* inner = lam_new_env(env->vm, env, modname->val());
             lam_value r = lam_make_null();
             for (size_t i = 1; i < n; i += 1) {
                 r = lam_eval(a[i], inner);
@@ -731,11 +742,19 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         "$import", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             auto modname = a[0].as_symbol();
-            lam_value imp = env->lookup("_hooks.$_import");
-            lam_callable* func = imp.as_callable();
-            lam_value result = lam_eval_call(func, nullptr, a, 1);
-            env->bind(modname->val(), result);
-            return result;
+            auto it = env->vm->imports.find(modname->val());
+            if (it == env->vm->imports.end()) {
+                lam_result result = env->vm->hooks.import(env->vm, modname->val());
+                if (result.code == 0) {
+                    return result.value;
+                } else {
+                    return lam_make_error(ImportNotFound, result.msg);
+                }
+            } else {
+                lam_value m = it->second;
+                env->bind(modname->val(), m);
+                return m;
+            }
         });
 
     ret->bind_operative(
@@ -762,7 +781,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
         // ($let (name0 val0 name1.. val1..)) Bind pairs in the current environment
         "$let", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
-            lam_env* inner = (n == 1) ? env : lam_new_env(env, nullptr);
+            lam_env* inner = (n == 1) ? env : lam_new_env(env->vm, env, nullptr);
             lam_list* locals = a[0].as_list();
             assert(locals);
             assert(locals->len % 2 == 0);
@@ -817,14 +836,14 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
     ret->bind_applicative(
         "list", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n >= 1);
-            return lam_make_list_v(a, n);
+            return lam_make_list_v(env->vm, a, n);
         });
 
     ret->bind_applicative(
         "bigint", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 1);
             assert(a[0].type() == lam_type::Int);
-            return lam_make_bigint(a[0].as_int());
+            return lam_make_bigint(env->vm, a[0].as_int());
         });
 
     ret->bind_applicative(
@@ -883,7 +902,7 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     mpz_t r;
                     mpz_init(r);
                     mpz_mul_si(r, y.as_bigint()->mp, x.as_int());
-                    return lam_make_bigint(r);
+                    return lam_make_bigint(env->vm, r);
                 }
 
                 case combine_numeric_types(lam_type::BigInt, lam_type::Double):
@@ -893,13 +912,13 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     mpz_t r;
                     mpz_init(r);
                     mpz_mul_si(r, x.as_bigint()->mp, y.as_int());
-                    return lam_make_bigint(r);
+                    return lam_make_bigint(env->vm, r);
                 } break;
                 case combine_numeric_types(lam_type::BigInt, lam_type::BigInt): {
                     mpz_t r;
                     mpz_init(r);
                     mpz_mul(r, x.as_bigint()->mp, y.as_bigint()->mp);
-                    return lam_make_bigint(r);
+                    return lam_make_bigint(env->vm, r);
                 }
                 default:
                     assert(false);
@@ -975,13 +994,13 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
                     } else {
                         mpz_add_ui(r, x.as_bigint()->mp, -z);
                     }
-                    return lam_make_bigint(r);
+                    return lam_make_bigint(env->vm, r);
                 }
                 case combine_numeric_types(lam_type::BigInt, lam_type::BigInt): {
                     mpz_t r;
                     mpz_init(r);
                     mpz_sub(r, x.as_bigint()->mp, y.as_bigint()->mp);
-                    return lam_make_bigint(r);
+                    return lam_make_bigint(env->vm, r);
                 }
                 default:
                     assert(false);
@@ -1044,10 +1063,10 @@ lam_env* lam_make_env_builtin(lam_hooks* hooks) {
 
     ret->bind("null", lam_make_null());
     ret->seal();
-    return lam_new_env(ret, nullptr);
+    return lam_new_env(vm, ret, nullptr);
 }
 
-lam_value lam_eval(lam_value val, lam_env* env) {
+static lam_value lam_eval(lam_value val, lam_env* env) {
     // TODO    ugc_collect(&instance.gc);
     while (true) {
         switch (val.uval & lam_Magic::Mask) {
@@ -1108,8 +1127,15 @@ lam_value lam_eval(lam_value val, lam_env* env) {
     }
 }
 
+lam_value lam_eval(lam_vm* vm, lam_value val) {
+    return lam_eval(val, vm->root);
+}
+
 static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
     if (header == nullptr) {
+        assert(gc->userdata == gc);
+        auto vm = reinterpret_cast<lam_vm*>(gc);
+        vm;
         // todo scan root
     } else {
         static_assert(offsetof(lam_obj, header) == 0);
@@ -1174,7 +1200,33 @@ static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
     free(gobj);
 }
 
-void lam_init() {
+lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t len) {
+    const char* next = nullptr;
+    auto cur = static_cast<const char*>(data);
+    auto end = static_cast<const char*>(data) + len;
+    lam_env* env = lam_new_env(vm, vm->root, name);
+
+    while (cur < end) {
+        lam_result res = lam_parse(vm, cur, end, &next);
+        if (res.code != 0) {
+            return res;
+        }
+        lam_value v = lam_eval(res.value, env);
+        cur = next;
+    }
+    lam_value mod = lam_make_value(env);
+    vm->root->bind(name, mod);
+    return lam_result::ok(mod);
+}
+
+lam_vm* lam_vm_new(lam_hooks* hooks) {
     ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
     instance.gc.userdata = &instance;
+    memcpy(&instance.hooks, hooks, sizeof(lam_hooks));
+    instance.root = lam_make_env_builtin(&instance);
+    return &instance;
+}
+
+void lam_vm_delete(lam_vm* vm) {
+	//TODO
 }

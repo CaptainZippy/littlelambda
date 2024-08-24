@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <cstdio>
 #include <string>
+#include <format>
 #include <unordered_map>
 #include <vector>
 #include "littlelambda.h"
@@ -19,207 +20,218 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-static lam_result read_and_eval(const char* path);
-
-struct lam_hooks_impl : lam_hooks {
-    lam_hooks_impl() { import = &do_import; }
-    static lam_result do_import(lam_hooks* hooks, const char* p) {
-        auto self = static_cast<lam_hooks_impl*>(hooks);
-        auto v = self->_imports[p];
-        if (v.type() != lam_type::Environment) {
-            auto p2 = std::string{p} + ".ll";
-            auto res = read_and_eval(p2.c_str());
-            if (res.code != 0) {
-                return res;
-            }
-            v = res.value;
-            self->_imports[p] = res.value;
-        }
-        return lam_result::ok(v);
-    }
-    std::unordered_map<std::string, lam_value> _imports;
-};
-
-lam_env* lam_make_env_default() {
-    auto hooks = new lam_hooks_impl{};
-    return lam_make_env_builtin(hooks);
-}
-
-lam_result read_and_eval(const char* path) {
+lam_result read_and_eval(lam_vm* vm, const char* path) {
     // TODO: accept path of loading module, accept environment, split out finding module
     std::vector<char> buf;
     if (slurp_file(path, buf) == 0) {
-        auto env = lam_make_env_default();
         const char* bufEnd = buf.data() + buf.size();
+        lam_value lastObj{};
         for (const char* cur = buf.data(); cur < bufEnd;) {
             const char* next = nullptr;
-            lam_result res = lam_parse(cur, bufEnd, &next);
+            lam_result res = lam_parse(vm, cur, bufEnd, &next);
             if (res.code != 0) {
                 return res;
             }
             cur = next;
-            lam_value obj = lam_eval(res.value, env);
+            lastObj = lam_eval(vm, res.value);
         }
-        auto v = lam_make_value(reinterpret_cast<lam_obj*>(env));
-        return lam_result::ok(v);
+        return lam_result::ok(lastObj);
     }
     return lam_result::fail(10000, "module not found");
 }
 
-static lam_value _lam_parse_or_die(const char* input, int N) {
+static lam_value _lam_parse_or_die(lam_vm* vm, const char* input, int N) {
     const char* restart = nullptr;
     const char* end = input + N;
-    auto r = lam_parse(input, end, &restart);
+    auto r = lam_parse(vm, input, end, &restart);
     assert2(restart == end, "Input was not consumed");
     assert(r.code == 0);
     return r.value;
 }
 
 template<int N>
-static lam_value lam_parse_or_die(const char (&input)[N]) {
-    return _lam_parse_or_die(input, N-1); // not null terminator
+static lam_value lam_parse_or_die(lam_vm* vm, const char (&input)[N]) {
+    return _lam_parse_or_die(vm, input, N-1); // not null terminator
 }
 
+static lam_result import_impl(lam_vm* vm, const char* modname) {
+    std::string path = std::format("{}.ll", modname);
+    std::vector<char> buf;
+    if (slurp_file(path.c_str(), buf) == 0) {
+        return lam_vm_import(vm, modname, buf.data(), buf.size());
+    }
+    return lam_result::fail(1, "Import failed");
+}
+
+
+
 int main() {
-    lam_init();
-    read_and_eval("module.ll");
-    read_and_eval("test.ll");
+    lam_hooks hooks = {&malloc, &free, &import_impl};
     if (1) {
-        lam_parse_or_die("hello");
-        lam_parse_or_die("\"world\"");
-        lam_parse_or_die("12");
-        lam_parse_or_die("12.2");
-        lam_parse_or_die("(hello world)");
-        lam_parse_or_die("(hello (* num 141.0) world)");
-        lam_parse_or_die("(begin ($define r 10) (* 3.4 (* r r)))");
-        lam_parse_or_die("(begin ($define r null) (print r))");
+        lam_vm* vm = lam_vm_new(&hooks);
+        read_and_eval(vm, "module.ll");
+        read_and_eval(vm, "test.ll");
+        lam_vm_delete(vm);
     }
 
-    read_and_eval("01-Basic.ll");
+    if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_parse_or_die(vm, "hello");
+        lam_parse_or_die(vm, "\"world\"");
+        lam_parse_or_die(vm, "12");
+        lam_parse_or_die(vm, "12.2");
+        lam_parse_or_die(vm, "(hello world)");
+        lam_parse_or_die(vm, "(hello (* num 141.0) world)");
+        lam_parse_or_die(vm, "(begin ($define r 10) (* 3.4 (* r r)))");
+        lam_parse_or_die(vm, "(begin ($define r null) (print r))");
+        lam_vm_delete(vm);
+    }
+
+    if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
+        read_and_eval(vm, "01-Basic.ll");
+        lam_vm_delete(vm);
+    }
     if (0) {
-        lam_value expr = lam_parse_or_die("(begin ($define r 10) (* 3.1 (* r r)))");
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr = lam_parse_or_die(vm, "(begin ($define r 10) (* 3.1 (* r r)))");
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.dval > 314);
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr0a = lam_parse_or_die(
-            "($module bar\n"
-            "   ($define (area x y) (* x y))\n"
-            "   ($define (perim x y) (* 2 (+ x y))))");
-        lam_value expr0b = lam_parse_or_die(
-            "($module bar .)\n"
-            "($define (area x y) (* x y))\n"
-            "($define (perim x y) (* 2 (+ x y)))");
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr0a = lam_parse_or_die(vm,
+                                            "($module bar\n"
+                                            "   ($define (area x y) (* x y))\n"
+                                            "   ($define (perim x y) (* 2 (+ x y))))");
+        lam_value expr0b = lam_parse_or_die(vm,
+                                            "($module bar .)\n"
+                                            "($define (area x y) (* x y))\n"
+                                            "($define (perim x y) (* 2 (+ x y)))");
 
-        lam_value expr1a = lam_parse_or_die(
-            "($module foo\n"
-            "   ($define (area x y)\n"
-            "       (if (= x 0) 0 .)\n"
-            "       (* x y))\n"
-            "   ($define (perim x y) (* 2 (+ x y))))");
+        lam_value expr1a = lam_parse_or_die(vm,
+                                            "($module foo\n"
+                                            "   ($define (area x y)\n"
+                                            "       (if (= x 0) 0 .)\n"
+                                            "       (* x y))\n"
+                                            "   ($define (perim x y) (* 2 (+ x y))))");
         lam_print(expr1a, "\n");
-        lam_value expr1b = lam_parse_or_die(
-            "($module foo .)\n"
-            "($define (area x y)\n"
-            "   (if (= x 0) 0 .)\n"
-            "   (* x y))\n"
-            "($define (perim x y) (* 2 (+ x y)))");
+        lam_value expr1b = lam_parse_or_die(vm,
+                                            "($module foo .)\n"
+                                            "($define (area x y)\n"
+                                            "   (if (= x 0) 0 .)\n"
+                                            "   (* x y))\n"
+                                            "($define (perim x y) (* 2 (+ x y)))");
         lam_print(expr1b, "\n");
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_env* env = lam_make_env_default();
+        lam_vm* vm = lam_vm_new(&hooks);
         lam_value op = lam_make_opaque(22);
-        env->bind("val", op);
+        //TODO env->bind("val", op);
         lam_print(op, "\n");
-        lam_value expr = lam_parse_or_die("(print val \"\\n\")");
-        lam_eval(expr, env);
+        lam_value expr = lam_parse_or_die(vm, "(print val \"\\n\")");
+        lam_eval(vm, expr);
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr0 = lam_parse_or_die("($let (a 10 b 20) (print a b \"\\n\"))");
-        lam_env* env = lam_make_env_default();
-        lam_eval(expr0, env);
-        assert(env->lookup("a").as_error());
-        lam_value expr1 = lam_parse_or_die(
-            "(begin\n"
-            "   ($let (c 30 d 40))\n"
-            "   (print c d \"\\n\"))");
-        lam_eval(expr1, env);
-        assert(env->lookup("c").as_int() == 30);
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr0 = lam_parse_or_die(vm, "($let (a 10 b 20) (print a b \"\\n\"))");
+        lam_eval(vm, expr0);
+        //assert(env->lookup("a").as_error());
+        lam_value expr1 = lam_parse_or_die(vm,
+                                           "(begin\n"
+                                           "   ($let (c 30 d 40))\n"
+                                           "   (print c d \"\\n\"))");
+        lam_eval(vm, expr1);
+        //assert(env->lookup("c").as_int() == 30);
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr = lam_parse_or_die(
-            "(begin"
-            " ($import math)"
-            " ($import codepoint)"
-            " ($define nl codepoint.newline)"
-            " ($define (area r) (* math.pi (* r r)))"
-            " ($define r 10)"
-            " (print ($let (r 20) (area r)) codepoint.newline)"
-            " (print (area r) nl)"
-            ")");
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr = lam_parse_or_die(vm,
+                                          "(begin"
+                                          " ($import math)"
+                                          " ($import codepoint)"
+                                          " ($define nl codepoint.newline)"
+                                          " ($define (area r) (* math.pi (* r r)))"
+                                          " ($define r 10)"
+                                          " (print ($let (r 20) (area r)) codepoint.newline)"
+                                          " (print (area r) nl)"
+                                          ")");
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.dval == 0);
+        lam_vm_delete(vm);
     }
 
     if (0) {
-        lam_value expr = lam_parse_or_die(
-            "(begin"
-            " ($import math)"
-            " ($define (circle-area r) (* pi (* r r)))"
-            " (circle-area 3)"
-            ")");
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr = lam_parse_or_die(vm,
+                                          "(begin"
+                                          " ($import math)"
+                                          " ($define (circle-area r) (* pi (* r r)))"
+                                          " (circle-area 3)"
+                                          ")");
 
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.dval > 9 * 3.1);
         assert(obj.dval < 9 * 3.2);
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr = lam_parse_or_die(
-            "(begin"
-            "   ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))"
-            "   (fact (bigint 35)))");
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr =
+            lam_parse_or_die(vm,
+                             "(begin"
+                             "   ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))"
+                             "   (fact (bigint 35)))");
 
-        lam_env* env = lam_make_env_default();
         for (int i = 0; i < 1; ++i) {
-            lam_value obj = lam_eval(expr, env);
+            lam_value obj = lam_eval(vm, expr);
             assert(obj.type() == lam_type::BigInt);
             printf("%s\n", obj.as_bigint()->str());
         }
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr = lam_parse_or_die(
-            "(begin"
-            "   ($define (twice x) (* 2 x))"
-            "   ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))"
-            "   ((repeat twice) 10)"
-            ")");
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr =
+            lam_parse_or_die(vm,
+                             "(begin"
+                             "   ($define (twice x) (* 2 x))"
+                             "   ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))"
+                             "   ((repeat twice) 10)"
+                             ")");
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 40);
 
-        expr = lam_parse_or_die("((repeat (repeat twice)) 10)");
-        obj = lam_eval(expr, env);
+        expr = lam_parse_or_die(vm, "((repeat (repeat twice)) 10)");
+        obj = lam_eval(vm, expr);
         assert(obj.as_int() == 160);
+        lam_vm_delete(vm);
     }
 
     if (0) {
+        lam_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(
+            vm,
             "($define (range a b) ($if (= a b) ($quote()) (cons a (range(+ a 1) b))))"
             //"($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
             "(range 0 10)");
+        lam_vm_delete(vm);
     }
 
     if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(
+            vm,
             //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
             "(begin"
             "  ($define ltest ($lambda args (print args)))"
@@ -234,15 +246,16 @@ int main() {
             //"    (mapreduce (curry equal? item)"
             "             + L))"
             "  (count 0 (list 0 1 2 0 3 0 0)))");
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 4);
+        lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_value expr = lam_parse_or_die(
-            //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
-            R"---(
+        lam_vm* vm = lam_vm_new(&hooks);
+        //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
+        lam_value expr = lam_parse_or_die(vm,
+                                          R"---(
             (begin
                 (print "hello\n")
                 ($define (test_one expr) (begin ($define a 202) (eval expr)))
@@ -262,9 +275,9 @@ int main() {
 
                 303)
             )---");
-        lam_env* env = lam_make_env_default();
-        lam_value obj = lam_eval(expr, env);
+        lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 303);
+        lam_vm_delete(vm);
     }
 
     return 0;
