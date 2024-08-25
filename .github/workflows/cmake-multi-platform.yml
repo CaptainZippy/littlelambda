@@ -53,7 +53,7 @@ jobs:
     #     ls -l /usr/bin/gcc* /usr/bin/g++* /usr/bin/clang*
 
     - name: Checkout project
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: true
 
