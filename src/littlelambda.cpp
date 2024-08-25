@@ -581,9 +581,9 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
     return (int(xm) << 2) | int(ym);
 }
 
-#if false
 static lam_env* lam_make_env_builtin(lam_vm* vm) {
-    lam_env* ret = lam_new_env(nullptr, "builtin");
+    lam_env* ret = lam_new_env(vm, nullptr, "builtin");
+#if false
     if (hooks) {
         lam_env* _hooks = lam_new_env(nullptr, "_hooks");
         static const char _import_func[] = "_import_func";
@@ -1228,5 +1228,5 @@ lam_vm* lam_vm_new(lam_hooks* hooks) {
 }
 
 void lam_vm_delete(lam_vm* vm) {
-	//TODO
+    // TODO
 }
