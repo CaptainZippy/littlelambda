@@ -21,9 +21,9 @@ extern void __debugbreak();  // Compiler Intrinsic
     if (!(COND)) {        \
         lam_debugbreak(); \
     }
-#define assert2(COND, MSG)\
-    if (!(COND)) {        \
-        lam_debugbreak(); \
+#define assert2(COND, MSG) \
+    if (!(COND)) {         \
+        lam_debugbreak();  \
     }
 
 /// Types a lam_value can contain.
@@ -83,7 +83,7 @@ using lam_u32 = unsigned long;
 enum lam_Magic : lam_u64 {
     // Anything other than 7ff8.... means the value is a non-nan double
     NormalNan = 0x7ff80000'00000000,  // 1000 - 'Normal' NaN prefix
-    TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values
+    TaggedNan = 0x7ffc0000'00000000,  // 11.. - 'Reserved' NaN values, 4 possibilities
 
     Mask = 0x7fff0000'00000000,      // 1111
     TagInt = 0x7ffc0000'00000000,    // 1100 + 32 bit signed integer value
@@ -102,7 +102,8 @@ struct lam_obj {
 };
 
 /// 'Boxed' NaN tagged value.
-/// This either contains an double/integer or a pointer to a lam_obj derived object.
+/// This either contains an immediate value (e.g. double/int/opaque/null) or
+/// a pointer to a lam_obj derived object.
 union lam_value {
     lam_u64 uval;
     double dval;
@@ -199,7 +200,7 @@ struct lam_list : lam_obj {
     }
 };
 
-/// Function type. Either an applicative (evaluates arguments) or an operative (arguments are not
+/// Callable type. Either an applicative (evaluates arguments) or an operative (arguments are not
 /// implicilty evaluated)
 struct lam_callable : lam_obj {
     const char* name;
@@ -304,7 +305,7 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 }
 
 /// Evaluate the given value in the given environment.
-//lam_value lam_eval(lam_value val, lam_env* env);
+// lam_value lam_eval(lam_value val, lam_env* env);
 
 /// Evaluate the given value.
 lam_value lam_eval(lam_vm* vm, lam_value val);

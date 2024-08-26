@@ -61,16 +61,15 @@ struct lam_vm {
         lam_u64 gc_iter_count;
     } gc_stats;
 };
-static lam_vm instance;
 
 // Allocate and zero "sizeof(T) + extra" bytes
 // Register T with the garbage collector
 template <typename T>
-static T* callocPlus(size_t extra) {
+static T* callocPlus(lam_vm* vm, size_t extra) {
     void* p = calloc(1, sizeof(T) + extra);
     auto o = reinterpret_cast<T*>(p);
-    ugc_register(&instance.gc, &o->header);
-    instance.gc_stats.alloc_count += 1;
+    ugc_register(&vm->gc, &o->header);
+    vm->gc_stats.alloc_count += 1;
     return o;
 }
 
@@ -273,7 +272,7 @@ lam_result lam_parse(lam_vm* vm, const char* input, const char* endInput, const 
 
 lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
-    auto* d = callocPlus<lam_symbol>(len + 1);
+    auto* d = callocPlus<lam_symbol>(vm, len + 1);
     d->type = lam_type::Symbol;
     d->len = len;
     memcpy(d + 1, s, len);
@@ -283,7 +282,7 @@ lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n) {
 
 lam_value lam_make_string(lam_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
-    auto* d = callocPlus<lam_string>(len + 1);
+    auto* d = callocPlus<lam_string>(vm, len + 1);
     d->type = lam_type::String;
     d->len = len;
     memcpy(d + 1, s, len);
@@ -292,14 +291,14 @@ lam_value lam_make_string(lam_vm* vm, const char* s, size_t n) {
 }
 
 lam_value lam_make_bigint(lam_vm* vm, int i) {
-    auto* d = callocPlus<lam_bigint>(0);
+    auto* d = callocPlus<lam_bigint>(vm, 0);
     d->type = lam_type::BigInt;
     mpz_init_set_si(d->mp, i);
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_error(unsigned code, const char* msg) {
-    auto* d = callocPlus<lam_error>(0);
+lam_value lam_make_error(lam_vm* vm, unsigned code, const char* msg) {
+    auto* d = callocPlus<lam_error>(vm, 0);
     d->type = lam_type::Error;
     d->code = code;
     d->msg = msg;
@@ -307,7 +306,7 @@ lam_value lam_make_error(unsigned code, const char* msg) {
 }
 
 lam_value lam_make_bigint(lam_vm* vm, mpz_t m) {
-    auto* d = callocPlus<lam_bigint>(0);
+    auto* d = callocPlus<lam_bigint>(vm, 0);
     d->type = lam_type::BigInt;
     static_assert(sizeof(d->mp) == 16);
     memcpy(d->mp, m, sizeof(d->mp));
@@ -315,7 +314,7 @@ lam_value lam_make_bigint(lam_vm* vm, mpz_t m) {
 }
 
 lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t len) {
-    auto* d = callocPlus<lam_list>(len * sizeof(lam_value));
+    auto* d = callocPlus<lam_list>(vm, len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
     d->cap = len;
@@ -352,7 +351,7 @@ struct lam_env_impl : lam_env {
 
 static lam_env* lam_new_env(lam_vm* vm, lam_env* parent, const char* name) {
     assert(parent == nullptr || vm == static_cast<lam_env_impl*>(parent)->vm);
-    auto* d = callocPlus<lam_env_impl>(sizeof(lam_env_impl));
+    auto* d = callocPlus<lam_env_impl>(vm, sizeof(lam_env_impl));
     return new (d) lam_env_impl(vm, parent, name);
 }
 
@@ -392,7 +391,7 @@ void lam_env::bind(const char* name, lam_value value) {
 void lam_env::bind_applicative(const char* name, lam_invoke b) {
     auto self = static_cast<lam_env_impl*>(this);
     assert(!self->_sealed);
-    auto* d = callocPlus<lam_callable>(0);
+    auto* d = callocPlus<lam_callable>(self->vm, 0);
     d->type = lam_type::Applicative;
     d->name = name;
     d->invoke = b;
@@ -407,7 +406,7 @@ void lam_env::bind_applicative(const char* name, lam_invoke b) {
 void lam_env::bind_operative(const char* name, lam_invoke b, void* context) {
     auto self = static_cast<lam_env_impl*>(this);
     assert(!self->_sealed);
-    auto* d = callocPlus<lam_callable>(0);
+    auto* d = callocPlus<lam_callable>(self->vm, 0);
     d->type = lam_type::Operative;
     d->name = name;
     d->invoke = b;
@@ -450,7 +449,7 @@ lam_value lam_env_impl::_lookup(const char* symStr, const lam_env* startEnv) {
             if (auto p = e->_parent) {
                 e = static_cast<lam_env_impl*>(e->_parent);
             } else {
-                return lam_make_error(SymbolNotFound, "symbol not found");
+                return lam_make_error(startEnv->vm, SymbolNotFound, "symbol not found");
             }
         }
     }
@@ -636,8 +635,8 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
                     variadic = fnargs[fnargs.size() - 1].as_symbol()->val();
                     fnargs = fnargs.subspan(0, fnargs.size() - 2);
                 }
-                auto func =
-                    callocPlus<lam_callable>(fnargs.size() * sizeof(char*));  // TODO intern names
+                auto func = callocPlus<lam_callable>(
+                    env->vm, fnargs.size() * sizeof(char*));  // TODO intern names
                 bool operative = name[0] == '$';
                 if (operative) {
                     assert(numCallArgs == 3);
@@ -674,7 +673,7 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
         // 'vargs'
         "$lambda", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             if (n != 2) {
-                return lam_make_error(WrongNumberOfArguments, "($lambda args body)");
+                return lam_make_error(env->vm, WrongNumberOfArguments, "($lambda args body)");
             }
             auto lhs = a[0];
             auto rhs = a[1];
@@ -690,7 +689,8 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
             } else {
                 assert(false && "expected list or symbol");
             }
-            auto func = callocPlus<lam_callable>(numArgs * sizeof(char*));  // TODO intern names
+            auto func =
+                callocPlus<lam_callable>(env->vm, numArgs * sizeof(char*));  // TODO intern names
             func->type = lam_type::Applicative;
             func->invoke = &invoke_applicative;
             func->name = "lambda";
@@ -748,7 +748,7 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
                 if (result.code == 0) {
                     return result.value;
                 } else {
-                    return lam_make_error(ImportNotFound, result.msg);
+                    return lam_make_error(env->vm, ImportNotFound, result.msg);
                 }
             } else {
                 lam_value m = it->second;
@@ -813,7 +813,8 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
                 case 2:
                     return lam_eval(a[0], a[1].as_env());
                 default:
-                    return lam_make_error(WrongNumberOfArguments, "(eval expr) or (eval expr env)");
+                    return lam_make_error(env->vm, WrongNumberOfArguments,
+                                          "(eval expr) or (eval expr env)");
             }
         });
 
@@ -1220,11 +1221,13 @@ lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t 
 }
 
 lam_vm* lam_vm_new(lam_hooks* hooks) {
-    ugc_init(&instance.gc, &lam_ugc_visit, &lam_ugc_free);
-    instance.gc.userdata = &instance;
-    memcpy(&instance.hooks, hooks, sizeof(lam_hooks));
-    instance.root = lam_make_env_builtin(&instance);
-    return &instance;
+    void* addr = hooks->alloc(sizeof(lam_vm));
+    lam_vm* vm = new (addr) lam_vm;
+    ugc_init(&vm->gc, &lam_ugc_visit, &lam_ugc_free);
+    vm->gc.userdata = vm;
+    memcpy(&vm->hooks, hooks, sizeof(lam_hooks));
+    vm->root = lam_make_env_builtin(vm);
+    return vm;
 }
 
 void lam_vm_delete(lam_vm* vm) {
