@@ -50,15 +50,17 @@ static bool _try_parse_as(const char* start, const char* end, T& out, V... v) {
     return false;
 }
 
+lam_hooks::~lam_hooks() = default;
+
 struct lam_vm {
-    ugc_t gc;
-    lam_hooks hooks;
-    lam_env* root;
-    std::unordered_map<std::string, lam_value> imports;
+    ugc_t gc{};
+    lam_hooks* hooks{};
+    lam_env* root{};
+    std::unordered_map<std::string, lam_value> imports{};
     struct {
-        lam_u64 alloc_count;
-        lam_u64 free_count;
-        lam_u64 gc_iter_count;
+        lam_u64 alloc_count{};
+        lam_u64 free_count{};
+        lam_u64 gc_iter_count{};
     } gc_stats;
 };
 
@@ -66,7 +68,8 @@ struct lam_vm {
 // Register T with the garbage collector
 template <typename T>
 static T* callocPlus(lam_vm* vm, size_t extra) {
-    void* p = calloc(1, sizeof(T) + extra);
+    void* p = vm->hooks->mem_alloc(sizeof(T) + extra);
+    memset(p, 0, sizeof(T) + extra);
     auto o = reinterpret_cast<T*>(p);
     ugc_register(&vm->gc, &o->header);
     vm->gc_stats.alloc_count += 1;
@@ -351,7 +354,7 @@ struct lam_env_impl : lam_env {
 
 static lam_env* lam_new_env(lam_vm* vm, lam_env* parent, const char* name) {
     assert(parent == nullptr || vm == static_cast<lam_env_impl*>(parent)->vm);
-    auto* d = callocPlus<lam_env_impl>(vm, sizeof(lam_env_impl));
+    auto* d = callocPlus<lam_env_impl>(vm, 0);
     return new (d) lam_env_impl(vm, parent, name);
 }
 
@@ -744,7 +747,7 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
             auto modname = a[0].as_symbol();
             auto it = env->vm->imports.find(modname->val());
             if (it == env->vm->imports.end()) {
-                lam_result result = env->vm->hooks.import(env->vm, modname->val());
+                lam_result result = env->vm->hooks->import(env->vm, modname->val());
                 if (result.code == 0) {
                     return result.value;
                 } else {
@@ -1221,15 +1224,17 @@ lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t 
 }
 
 lam_vm* lam_vm_new(lam_hooks* hooks) {
-    void* addr = hooks->alloc(sizeof(lam_vm));
+    hooks->init();
+    void* addr = hooks->mem_alloc(sizeof(lam_vm));
     lam_vm* vm = new (addr) lam_vm;
     ugc_init(&vm->gc, &lam_ugc_visit, &lam_ugc_free);
     vm->gc.userdata = vm;
-    memcpy(&vm->hooks, hooks, sizeof(lam_hooks));
+    vm->hooks = hooks;
     vm->root = lam_make_env_builtin(vm);
     return vm;
 }
 
 void lam_vm_delete(lam_vm* vm) {
+    vm->hooks->quit();
     // TODO
 }

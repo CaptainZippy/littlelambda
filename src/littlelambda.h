@@ -319,13 +319,12 @@ void lam_print(lam_value val, const char* end = nullptr);
 
 /// Functionality provided by external systems.
 struct lam_hooks {
-    using alloc_func = void*(size_t);
-    using free_func = void(void*);
-    using import_func = lam_result(lam_vm* vm, const char* modname);
-
-    alloc_func* alloc;
-    free_func* free;
-    import_func* import;
+    virtual ~lam_hooks();
+    virtual void* mem_alloc(size_t size) =0;
+    virtual void mem_free(void* addr) = 0;
+    virtual void init() = 0;
+    virtual void quit() = 0;
+    virtual lam_result import(lam_vm* vm, const char* modname) = 0;
 };
 
 /// Initialize a vm.

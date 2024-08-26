@@ -1,9 +1,23 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <cstdio>
-#include <string>
 #include <format>
+#include <string>
 #include <unordered_map>
 #include <vector>
+#if __cpp_lib_stacktrace >= 202011L
+#include <stacktrace> // C++23 feature
+#else
+namespace std {
+struct stacktrace_entry {
+    std::string description() { return ""; }
+};
+struct stacktrace {
+    static stacktrace current() { return {}; }
+    struct stacktrace_entry* begin() { return nullptr; }
+    stacktrace_entry* end() { return nullptr; }
+};
+}  // namespace std
+#endif
 #include "littlelambda.h"
 
 static int slurp_file(const char* path, std::vector<char>& buf) {
@@ -63,10 +77,40 @@ static lam_result import_impl(lam_vm* vm, const char* modname) {
     return lam_result::fail(1, "Import failed");
 }
 
+struct DebugHooks : lam_hooks {
+    DebugHooks() {}
 
+    void* mem_alloc(size_t size) override {
+        void* p = malloc(size);
+        assert(allocs.find(p) == allocs.end());
+        allocs[p] = std::stacktrace::current();
+        return p;
+    }
+    void mem_free(void* addr) override {
+        auto it = allocs.find(addr);
+        assert(it != allocs.end());
+        allocs.erase(it);
+        free(addr);
+    }
+    void init() override {
+        //assert(allocs.empty());
+        allocs.clear();
+    }
+    void quit() override {
+        /*for (auto it : allocs) {
+            printf("%p\n", it.first);
+            for (auto p : it.second) {
+                printf("\t%s\n", p.description().c_str());
+            }
+        }*/
+    }
+    lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+
+    std::unordered_map<void*, std::stacktrace> allocs;
+};
 
 int main() {
-    lam_hooks hooks = {&malloc, &free, &import_impl};
+    DebugHooks hooks;
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         read_and_eval(vm, "module.ll");
