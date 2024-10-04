@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 #if __cpp_lib_stacktrace >= 202011L
-#include <stacktrace> // C++23 feature
+#include <stacktrace>  // C++23 feature
 #else
 namespace std {
 struct stacktrace_entry {
@@ -63,9 +63,9 @@ static lam_value _lam_parse_or_die(lam_vm* vm, const char* input, int N) {
     return r.value;
 }
 
-template<int N>
-static lam_value lam_parse_or_die(lam_vm* vm, const char (&input)[N]) {
-    return _lam_parse_or_die(vm, input, N-1); // not null terminator
+template <int N>
+static inline lam_value lam_parse_or_die(lam_vm* vm, const char (&input)[N]) {
+    return _lam_parse_or_die(vm, input, N - 1);  // not null terminator
 }
 
 static lam_result import_impl(lam_vm* vm, const char* modname) {
@@ -82,35 +82,50 @@ struct DebugHooks : lam_hooks {
 
     void* mem_alloc(size_t size) override {
         void* p = malloc(size);
-        assert(allocs.find(p) == allocs.end());
-        allocs[p] = std::stacktrace::current();
+        assert(_allocs.find(p) == _allocs.end());
+        _allocs[p] = std::stacktrace::current();
         return p;
     }
     void mem_free(void* addr) override {
-        auto it = allocs.find(addr);
-        assert(it != allocs.end());
-        allocs.erase(it);
+        auto it = _allocs.find(addr);
+        assert(it != _allocs.end());
+        _allocs.erase(it);
         free(addr);
     }
     void init() override {
-        //assert(allocs.empty());
-        allocs.clear();
+        assert(_allocs.empty());
+        _allocs.clear();
     }
     void quit() override {
-        /*for (auto it : allocs) {
+        for (auto it : _allocs) {
             printf("%p\n", it.first);
             for (auto p : it.second) {
-                printf("\t%s\n", p.description().c_str());
+                printf("\t'%s'\n", p.description().c_str());
             }
-        }*/
+        }
+        _allocs.clear();
     }
     lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
 
-    std::unordered_map<void*, std::stacktrace> allocs;
+    std::unordered_map<void*, std::stacktrace> _allocs;
 };
 
-int main() {
-    DebugHooks hooks;
+struct SimpleHooks : lam_hooks {
+    int _nalloc{};
+    virtual void* mem_alloc(size_t size) {
+        _nalloc += 1;
+        return malloc(size);
+    }
+    void mem_free(void* addr) {
+        free(addr);
+        _nalloc -= 1;
+    }
+    void init() { _nalloc = 0; }
+    void quit() { assert(_nalloc == 0); }
+    lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+};
+
+void test_all(lam_hooks& hooks) {
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         read_and_eval(vm, "module.ll");
@@ -175,7 +190,7 @@ int main() {
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value op = lam_make_opaque(22);
-        //TODO env->bind("val", op);
+        // TODO env->bind("val", op);
         lam_print(op, "\n");
         lam_value expr = lam_parse_or_die(vm, "(print val \"\\n\")");
         lam_eval(vm, expr);
@@ -186,13 +201,13 @@ int main() {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value expr0 = lam_parse_or_die(vm, "($let (a 10 b 20) (print a b \"\\n\"))");
         lam_eval(vm, expr0);
-        //assert(env->lookup("a").as_error());
+        // assert(env->lookup("a").as_error());
         lam_value expr1 = lam_parse_or_die(vm,
                                            "(begin\n"
                                            "   ($let (c 30 d 40))\n"
                                            "   (print c d \"\\n\"))");
         lam_eval(vm, expr1);
-        //assert(env->lookup("c").as_int() == 30);
+        // assert(env->lookup("c").as_int() == 30);
         lam_vm_delete(vm);
     }
 
@@ -323,6 +338,13 @@ int main() {
         assert(obj.as_int() == 303);
         lam_vm_delete(vm);
     }
+}
 
+int main() {
+    DebugHooks hooks;
+    //SimpleHooks hooks;
+    for (int i = 0; i < 100; ++i) {
+        test_all(hooks);
+    }
     return 0;
 }

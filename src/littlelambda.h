@@ -97,7 +97,7 @@ enum lam_Magic : lam_u64 {
 /// Base class of all heap allocated objects.
 struct lam_obj {
     lam_obj(lam_type t) : type{t} {}
-    ugc_header_s header{};
+    ugc_header_s header;
     lam_type type;
 };
 

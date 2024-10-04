@@ -1139,8 +1139,14 @@ static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
     if (header == nullptr) {
         assert(gc->userdata == gc);
         auto vm = reinterpret_cast<lam_vm*>(gc);
-        vm;
-        // todo scan root
+        if (auto r = vm->root) {
+            ugc_visit(gc, &r->header);
+        }
+        for (auto&& m : vm->imports) {
+            if (lam_obj* o = m.second.obj_cast_value()) {
+                ugc_visit(gc, &o->header);
+            }
+        }
     } else {
         static_assert(offsetof(lam_obj, header) == 0);
         lam_obj* obj = reinterpret_cast<lam_obj*>(header);
@@ -1163,7 +1169,9 @@ static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
             case lam_type::Operative:
             case lam_type::Applicative: {
                 auto call = static_cast<lam_callable*>(obj);
-                ugc_visit(gc, &call->env->header);
+                if (auto e = call->env) {
+                    ugc_visit(gc, &e->header);
+                }
                 if (auto o = call->body.obj_cast_value()) {
                     ugc_visit(gc, &o->header);
                 }
@@ -1201,7 +1209,7 @@ static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
             mpz_clear(static_cast<lam_bigint*>(obj)->mp);
             break;
     }
-    free(gobj);
+    vm->hooks->mem_free(gobj);
 }
 
 lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t len) {
@@ -1234,7 +1242,20 @@ lam_vm* lam_vm_new(lam_hooks* hooks) {
     return vm;
 }
 
+template<typename T>
+static inline void swap_reset_container(T& t) {
+    T e;
+    t.swap(e);
+}
+
 void lam_vm_delete(lam_vm* vm) {
-    vm->hooks->quit();
-    // TODO
+    // Test: remove garbage
+    ugc_collect(&vm->gc);
+    // Test: everything else
+    vm->root = nullptr;
+    swap_reset_container(vm->imports);
+    ugc_collect(&vm->gc);
+    auto hooks = vm->hooks;
+    hooks->mem_free(vm);
+    hooks->quit();
 }
