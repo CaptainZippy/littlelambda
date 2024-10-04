@@ -8,9 +8,11 @@ Features:
  * Tail recursion optimization
  * First class environments
  * Supports kernel-style operatives (calls where all the arguments are passed unevaluated)
+ * Garbage collection based on github.com/bullno1/ugc
 
-Missing features:
- * Garbage collection (but see littlegc)
+TODO:
+ * Switch to incremental GC & (auto)tune
+ * Optimize function calls via a stack
 
  [![CMake](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml)
  [![CodeQL](https://github.com/CaptainZippy/littlelambda/actions/workflows/codeql.yml/badge.svg)](https://github.com/CaptainZippy/littlelambda/actions/workflows/codeql.yml)
