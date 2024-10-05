@@ -105,6 +105,7 @@ struct DebugHooks : lam_hooks {
         }
         _allocs.clear();
     }
+    void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
     lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
 
     std::unordered_map<void*, std::stacktrace> _allocs;
@@ -123,6 +124,7 @@ struct SimpleHooks : lam_hooks {
     void init() { _nalloc = 0; }
     void quit() { assert(_nalloc == 0); }
     lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
 };
 
 void test_all(lam_hooks& hooks) {
@@ -176,14 +178,14 @@ void test_all(lam_hooks& hooks) {
                                             "       (if (= x 0) 0 .)\n"
                                             "       (* x y))\n"
                                             "   ($define (perim x y) (* 2 (+ x y))))");
-        lam_print(expr1a, "\n");
+        lam_print(vm, expr1a, "\n");
         lam_value expr1b = lam_parse_or_die(vm,
                                             "($module foo .)\n"
                                             "($define (area x y)\n"
                                             "   (if (= x 0) 0 .)\n"
                                             "   (* x y))\n"
                                             "($define (perim x y) (* 2 (+ x y)))");
-        lam_print(expr1b, "\n");
+        lam_print(vm, expr1b, "\n");
         lam_vm_delete(vm);
     }
 
@@ -191,7 +193,7 @@ void test_all(lam_hooks& hooks) {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value op = lam_make_opaque(22);
         // TODO env->bind("val", op);
-        lam_print(op, "\n");
+        lam_print(vm, op, "\n");
         lam_value expr = lam_parse_or_die(vm, "(print val \"\\n\")");
         lam_eval(vm, expr);
         lam_vm_delete(vm);

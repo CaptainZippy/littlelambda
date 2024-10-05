@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <charconv>
 #include <cstring>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -515,55 +516,86 @@ static bool truthy(lam_value v) {
     return false;
 }
 
-void lam_print(lam_value val, const char* end) {
+void lam_print(lam_vm* vm, lam_value val, const char* end) {
+    /*struct Adaptor {
+        using difference_type = std::ptrdiff_t;
+        char buf[64];
+        int count{0};
+        lam_hooks* h;
+
+        Adaptor(lam_hooks* hooks) : h(hooks) {}
+        ~Adaptor() { _flush(); }
+
+        void _flush() {
+            if (count) {
+                h->output(buf, count);
+                count = 0;
+            }
+        }
+        inline Adaptor& operator++() {
+            ++count;
+            if (count >= sizeof(buf)) {
+                _flush();
+            }
+            return *this;
+        }
+        Adaptor& operator++(int) {
+            auto copy = *this;
+            ++*this;
+            return copy;
+        }
+        inline char& operator*() { return buf[count]; }
+    };
+    static_assert(std::output_iterator<Adaptor, char>);
+    Adaptor out{vm->hooks};    */
+    char out[256];
+    std::format_to_n_result<char*> next{};
+
     switch (val.type()) {
         case lam_type::Double:
-            printf("%lf", val.as_double());
+            next = std::format_to_n(out, sizeof(out), "{}", val.as_double());
             break;
         case lam_type::Int:
-            printf("%i", val.as_int());
+            next = std::format_to_n(out, sizeof(out), "{}", val.as_int());
             break;
         case lam_type::Null:
-            printf("null");
+            next = std::format_to_n(out, sizeof(out), "{}","null");
             break;
         case lam_type::Opaque:
-            printf("Opaque{%" PRIu64 "}", val.as_opaque());
+            next = std::format_to_n(out, sizeof(out), "Opaque<{}>", val.as_opaque());
             break;
         case lam_type::Symbol:
-            printf(":%s", val.as_symbol()->val());
+            next = std::format_to_n(out, sizeof(out), ":{}", val.as_symbol()->val());
             break;
         case lam_type::String:
-            printf("%s", val.as_string()->val());
+            next = std::format_to_n(out, sizeof(out), "{}", val.as_string()->val());
             break;
         case lam_type::List: {
-            printf("(");
+            vm->hooks->output("(", 1);
             auto lst = val.as_list();
-            const char* sep = "";
             for (auto i = 0; i < lst->len; ++i) {
-                printf("%s", sep);
-                sep = " ";
-                lam_print(lst->at(i));
+                lam_print(vm, lst->at(i), (i+1==lst->len) ? ")" : " ");
             }
-            printf(")");
             break;
         }
         case lam_type::Applicative:
-            printf("Ap{%s}", val.as_callable()->name);
+            next = std::format_to_n(out, sizeof(out), "Ap<{}>", val.as_callable()->name);
             break;
         case lam_type::Operative:
-            printf("Op{%s}", val.as_callable()->name);
+            next = std::format_to_n(out, sizeof(out), "Op<{}>", val.as_callable()->name);
             break;
         case lam_type::Environment:
-            printf("Env{%p}", val.as_env());
+            next = std::format_to_n(out, sizeof(out), "Env<{}>", (void*)val.as_env());
             break;
         case lam_type::Error:
-            printf("Err{%x,%s}", val.as_error()->code, val.as_error()->msg);
+            next = std::format_to_n(out, sizeof(out), "Err<{:x},{}>", val.as_error()->code, val.as_error()->msg);
             break;
         default:
             assert(false);
     }
+    vm->hooks->output(out, next.out - out);
     if (end) {
-        printf("%s", end);
+        vm->hooks->output(end, strlen(end));
     }
 }
 
@@ -832,7 +864,7 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
         // (print expr...) Print the given expressions
         "print", [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             for (auto i = 0; i < n; ++i) {
-                lam_print(a[i]);
+                lam_print(env->vm, a[i]);
             }
             return lam_value{};
         });
@@ -1242,7 +1274,7 @@ lam_vm* lam_vm_new(lam_hooks* hooks) {
     return vm;
 }
 
-template<typename T>
+template <typename T>
 static inline void swap_reset_container(T& t) {
     T e;
     t.swap(e);

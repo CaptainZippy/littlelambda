@@ -315,7 +315,7 @@ lam_value lam_eval(lam_vm* vm, lam_value val);
 lam_result lam_parse(lam_vm* vm, const char* input, const char* end, const char** restart);
 
 /// Print the given value.
-void lam_print(lam_value val, const char* end = nullptr);
+void lam_print(lam_vm* vm, lam_value val, const char* end = nullptr);
 
 /// Functionality provided by external systems.
 struct lam_hooks {
@@ -324,6 +324,7 @@ struct lam_hooks {
     virtual void mem_free(void* addr) = 0;
     virtual void init() = 0;
     virtual void quit() = 0;
+    virtual void output(const char* s, size_t n) = 0;
     virtual lam_result import(lam_vm* vm, const char* modname) = 0;
 };
 
