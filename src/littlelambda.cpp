@@ -559,7 +559,7 @@ void lam_print(lam_vm* vm, lam_value val, const char* end) {
             next = std::format_to_n(out, sizeof(out), "{}", val.as_int());
             break;
         case lam_type::Null:
-            next = std::format_to_n(out, sizeof(out), "{}","null");
+            next = std::format_to_n(out, sizeof(out), "{}", "null");
             break;
         case lam_type::Opaque:
             next = std::format_to_n(out, sizeof(out), "Opaque<{}>", val.as_opaque());
@@ -574,8 +574,9 @@ void lam_print(lam_vm* vm, lam_value val, const char* end) {
             vm->hooks->output("(", 1);
             auto lst = val.as_list();
             for (auto i = 0; i < lst->len; ++i) {
-                lam_print(vm, lst->at(i), (i+1==lst->len) ? ")" : " ");
+                lam_print(vm, lst->at(i), (i + 1 == lst->len) ? ")" : " ");
             }
+            // Lists are handled recursively, 'next' is not assigned-to.
             break;
         }
         case lam_type::Applicative:
@@ -588,12 +589,15 @@ void lam_print(lam_vm* vm, lam_value val, const char* end) {
             next = std::format_to_n(out, sizeof(out), "Env<{}>", (void*)val.as_env());
             break;
         case lam_type::Error:
-            next = std::format_to_n(out, sizeof(out), "Err<{:x},{}>", val.as_error()->code, val.as_error()->msg);
+            next = std::format_to_n(out, sizeof(out), "Err<{:x},{}>", val.as_error()->code,
+                                    val.as_error()->msg);
             break;
         default:
             assert(false);
     }
-    vm->hooks->output(out, next.out - out);
+    if (next.out) {
+        vm->hooks->output(out, next.out - out);
+    }
     if (end) {
         vm->hooks->output(end, strlen(end));
     }
@@ -901,17 +905,17 @@ static lam_env* lam_make_env_builtin(lam_vm* vm) {
         "mapreduce",
         [](lam_callable* call, lam_env* env, auto a, auto n) -> lam_value_or_tail_call {
             assert(n == 3);
-            lam_callable* map = a[0].as_callable();
-            lam_callable* red = a[1].as_callable();
+            lam_callable* mapfunc = a[0].as_callable();
+            lam_callable* redfunc = a[1].as_callable();
             lam_list* lst = a[2].as_list();
             assert(lst->len >= 1);
-            // acc[0] holds the accumulator. acc[1] is the 'map'ped value
-            lam_value acc[]{lam_eval_call(map, env, lst->first(), 1), {}};
+            lam_value accum{lam_eval_call(mapfunc, env, lst->first(), 1)};
             for (size_t i = 1; i < lst->len; ++i) {
-                acc[1] = lam_eval_call(map, env, lst->first() + i, 1);
-                acc[0] = lam_eval_call(red, env, acc, 2);
+                lam_value val = lam_eval_call(mapfunc, env, lst->first() + i, 1);
+                lam_value args[] = {accum, val};
+                accum = lam_eval_call(redfunc, env, args, 2);
             }
-            return acc[0];
+            return accum;
         });
 
     ret->bind_applicative(

@@ -128,13 +128,7 @@ struct SimpleHooks : lam_hooks {
 };
 
 void test_all(lam_hooks& hooks) {
-    if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
-        read_and_eval(vm, "module.ll");
-        read_and_eval(vm, "test.ll");
-        lam_vm_delete(vm);
-    }
-
+    // Basic parsing tests
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_parse_or_die(vm, "hello");
@@ -148,19 +142,8 @@ void test_all(lam_hooks& hooks) {
         lam_vm_delete(vm);
     }
 
-    if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
-        read_and_eval(vm, "01-Basic.ll");
-        lam_vm_delete(vm);
-    }
-    if (0) {
-        lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, "(begin ($define r 10) (* 3.1 (* r r)))");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.dval > 314);
-        lam_vm_delete(vm);
-    }
-
+    // Printing & trailing "." syntax
+    // (foo a .) (b c) (d e f) is equivalent to (foo a (b c) (d e f))
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value expr0a = lam_parse_or_die(vm,
@@ -190,6 +173,27 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
+        read_and_eval(vm, "module.ll");
+        read_and_eval(vm, "test.ll");
+        lam_vm_delete(vm);
+    }
+
+    if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
+        read_and_eval(vm, "01-Basic.ll");
+        lam_vm_delete(vm);
+    }
+
+    if (1) {
+        lam_vm* vm = lam_vm_new(&hooks);
+        lam_value expr = lam_parse_or_die(vm, "(begin ($define r 10) (* 3.1415 (* r r)))");
+        lam_value obj = lam_eval(vm, expr);
+        assert(obj.dval > 314);
+        lam_vm_delete(vm);
+    }
+
+    if (0) {  // missing env->bind call
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value op = lam_make_opaque(22);
         // TODO env->bind("val", op);
@@ -279,34 +283,51 @@ void test_all(lam_hooks& hooks) {
         lam_vm_delete(vm);
     }
 
+    // List comprehension
     if (0) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(
-            vm,
-            "($define (range a b) ($if (= a b) ($quote()) (cons a (range(+ a 1) b))))"
-            //"($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
-            "(range 0 10)");
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin
+            ($define (range a b) TODO
+            (range 0 10))
+            )---");
+        // ($if (equal? a b) ($quote ()) (cons a (range(+ a 1) b))))
+        // ($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
+        lam_value res = lam_eval(vm, expr);
+        lam_print(vm, res, "\n");
         lam_vm_delete(vm);
     }
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(
-            vm,
-            //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
-            "(begin"
-            "  ($define ltest ($lambda args (print args)))"
-            "  ($define (vtest . args) (print args))"
-            "  (ltest 1 2)"
-            "  (ltest 1 (+ 2 2))"
-            "  (vtest 1 2)"
-            "  (vtest 1 2 (+ 3 5))"
-            //"  (macro (curry a b) ($lambda (x) (a b x)))"
-            "  ($define (count item L)"
-            "    (mapreduce ($lambda (x) (equal? item x))"
-            //"    (mapreduce (curry equal? item)"
-            "             + L))"
-            "  (count 0 (list 0 1 2 0 3 0 0)))");
+        lam_value expr = lam_parse_or_die(vm,R"---(
+(begin
+    ($define ltest
+        ($lambda args
+            (print args)))
+    ($define
+        (vtest . args)
+        (print args))
+    (ltest 1 2)
+    (ltest 1
+        (+ 2 2))
+    (vtest 1 2)
+    (vtest 1 2
+        (+ 3 5))
+    ($define
+        (curry1 fn arg1)
+        ($lambda (x)
+            (fn arg1 x)))
+    ($define
+        (count item L)
+        (mapreduce
+            (curry1 equal? item) + L))
+    ($define answer
+        (count 0
+            (list 0 1 2 0 3 0 0)))
+    (print "cnt=" answer "\n")
+answer)
+        )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 4);
         lam_vm_delete(vm);
@@ -315,8 +336,7 @@ void test_all(lam_hooks& hooks) {
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
         //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
-        lam_value expr = lam_parse_or_die(vm,
-                                          R"---(
+        lam_value expr = lam_parse_or_die(vm, R"---(
             (begin
                 (print "hello\n")
                 ($define (test_one expr) (begin ($define a 202) (eval expr)))
@@ -344,7 +364,7 @@ void test_all(lam_hooks& hooks) {
 
 int main() {
     DebugHooks hooks;
-    //SimpleHooks hooks;
+    // SimpleHooks hooks;
     for (int i = 0; i < 100; ++i) {
         test_all(hooks);
     }

@@ -10,15 +10,3 @@
 
 ($import math)
 (print "PI=" math.pi "\n")
-
-;; ($define ($module name . args) env body)
-
-
-;; ($module foo
-;;  ($define (area x x) (* x y)))
-
-;; ($define (func a) (begin
-;;     ($if (lt a 0) error .)
-;;     (print 1)
-;;     (print 2)
-;; )
