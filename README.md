@@ -12,7 +12,6 @@ Features:
  * Garbage collection based on github.com/bullno1/ugc
 
 TODO:
- * Switch to incremental GC & (auto)tune
  * Optimize function calls via a stack
 
  [![CMake](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml/badge.svg)](https://github.com/CaptainZippy/littlelambda/actions/workflows/cmake-multi-platform.yml)

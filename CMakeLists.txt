@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(SRCS
     README.md
-    src/test.cpp
     src/littlelambda.cpp
     src/littlelambda.h
     src/mini-gmp.h
@@ -19,16 +18,22 @@ set(SRCS
     .vscode/littlelambda.natvis)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRCS})
-add_executable (littlelambda ${SRCS})
+
+add_library(littlelambda STATIC ${SRCS})
+target_include_directories(littlelambda PUBLIC src)
+
+add_executable (lam_test test/test.cpp)
+target_link_libraries(lam_test littlelambda)
 
 if(MSVC)
     set_source_files_properties(mini-gmp.c PROPERTIES COMPILE_FLAGS "/wd4146 /wd4244 /wd4267")
-    set_target_properties(littlelambda PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
+    set_target_properties(lam_test PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
     target_compile_options(littlelambda PUBLIC "/EHsc")
 endif()
 
+
 enable_testing()
 add_test(NAME Simple
-    COMMAND $<TARGET_FILE:littlelambda>
+    COMMAND $<TARGET_FILE:lam_test>
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/test)
 
