@@ -146,28 +146,29 @@ void test_all(lam_hooks& hooks) {
     // (foo a .) (b c) (d e f) is equivalent to (foo a (b c) (d e f))
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr0a = lam_parse_or_die(vm,
-                                            "($module bar\n"
-                                            "   ($define (area x y) (* x y))\n"
-                                            "   ($define (perim x y) (* 2 (+ x y))))");
-        lam_value expr0b = lam_parse_or_die(vm,
-                                            "($module bar .)\n"
-                                            "($define (area x y) (* x y))\n"
-                                            "($define (perim x y) (* 2 (+ x y)))");
-
-        lam_value expr1a = lam_parse_or_die(vm,
-                                            "($module foo\n"
-                                            "   ($define (area x y)\n"
-                                            "       (if (= x 0) 0 .)\n"
-                                            "       (* x y))\n"
-                                            "   ($define (perim x y) (* 2 (+ x y))))");
+        lam_value expr0a = lam_parse_or_die(vm, R"---(
+            ($module bar
+                ($define (area x y) (* x y))
+                ($define (perim x y) (* 2 (+ x y))))
+        )---");
+        lam_value expr0b = lam_parse_or_die(vm, R"---(
+            ($module bar .)
+            ($define (area x y) (* x y))
+            ($define (perim x y) (* 2 (+ x y)))
+        )---");
+        lam_value expr1a = lam_parse_or_die(vm, R"---(
+            ($module foo
+               ($define (area x y)
+                   (if (= x 0) 0 .) (* x y))
+               ($define (perim x y) (* 2 (+ x y))))
+        )---");
         lam_print(vm, expr1a, "\n");
-        lam_value expr1b = lam_parse_or_die(vm,
-                                            "($module foo .)\n"
-                                            "($define (area x y)\n"
-                                            "   (if (= x 0) 0 .)\n"
-                                            "   (* x y))\n"
-                                            "($define (perim x y) (* 2 (+ x y)))");
+        lam_value expr1b = lam_parse_or_die(vm, R"---(
+            ($module foo .)
+            ($define (area x y)
+                (if (= x 0) .) 0 (* x y))
+            ($define (perim x y) (* 2 (+ x y)))
+        )---");
         lam_print(vm, expr1b, "\n");
         lam_vm_delete(vm);
     }
@@ -198,20 +199,21 @@ void test_all(lam_hooks& hooks) {
         lam_value op = lam_make_opaque(22);
         // TODO env->bind("val", op);
         lam_print(vm, op, "\n");
-        lam_value expr = lam_parse_or_die(vm, "(print val \"\\n\")");
+        lam_value expr = lam_parse_or_die(vm, R"---((print val "\n"))---");
         lam_eval(vm, expr);
         lam_vm_delete(vm);
     }
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr0 = lam_parse_or_die(vm, "($let (a 10 b 20) (print a b \"\\n\"))");
+        lam_value expr0 = lam_parse_or_die(vm, R"---(($let (a 10 b 20) (print a b "\n")))---");
         lam_eval(vm, expr0);
         // assert(env->lookup("a").as_error());
-        lam_value expr1 = lam_parse_or_die(vm,
-                                           "(begin\n"
-                                           "   ($let (c 30 d 40))\n"
-                                           "   (print c d \"\\n\"))");
+        lam_value expr1 = lam_parse_or_die(vm, R"---(
+            (begin
+                ($let (c 30 d 40))
+                (print c d "\n"))
+        )---");
         lam_eval(vm, expr1);
         // assert(env->lookup("c").as_int() == 30);
         lam_vm_delete(vm);
@@ -219,16 +221,16 @@ void test_all(lam_hooks& hooks) {
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm,
-                                          "(begin"
-                                          " ($import math)"
-                                          " ($import codepoint)"
-                                          " ($define nl codepoint.newline)"
-                                          " ($define (area r) (* math.pi (* r r)))"
-                                          " ($define r 10)"
-                                          " (print ($let (r 20) (area r)) codepoint.newline)"
-                                          " (print (area r) nl)"
-                                          ")");
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin .)
+            ($import math)
+            ($import codepoint)
+            ($define nl codepoint.newline)
+            ($define (area r) (* math.pi (* r r)))
+            ($define r 10)
+            (print ($let (r 20) (area r)) codepoint.newline)
+            (print (area r) nl)
+        )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.dval == 0);
         lam_vm_delete(vm);
@@ -236,13 +238,12 @@ void test_all(lam_hooks& hooks) {
 
     if (0) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm,
-                                          "(begin"
-                                          " ($import math)"
-                                          " ($define (circle-area r) (* pi (* r r)))"
-                                          " (circle-area 3)"
-                                          ")");
-
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin .)
+            ($import math)
+            ($define (circle-area r) (* pi (* r r)))
+            (circle-area 3)
+        )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.dval > 9 * 3.1);
         assert(obj.dval < 9 * 3.2);
@@ -251,12 +252,11 @@ void test_all(lam_hooks& hooks) {
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr =
-            lam_parse_or_die(vm,
-                             "(begin"
-                             "   ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))"
-                             "   (fact (bigint 35)))");
-
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin .)
+            ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))
+            (fact (bigint 35))
+        )---");
         for (int i = 0; i < 1; ++i) {
             lam_value obj = lam_eval(vm, expr);
             assert(obj.type() == lam_type::BigInt);
@@ -267,13 +267,12 @@ void test_all(lam_hooks& hooks) {
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr =
-            lam_parse_or_die(vm,
-                             "(begin"
-                             "   ($define (twice x) (* 2 x))"
-                             "   ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))"
-                             "   ((repeat twice) 10)"
-                             ")");
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin .)
+            ($define (twice x) (* 2 x))
+            ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))
+            ((repeat twice) 10)
+        )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 40);
 
@@ -287,10 +286,10 @@ void test_all(lam_hooks& hooks) {
     if (0) {
         lam_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
-            (begin
+            (begin .)
             ($define (range a b) TODO
-            (range 0 10))
-            )---");
+            (range 0 10)
+        )---");
         // ($if (equal? a b) ($quote ()) (cons a (range(+ a 1) b))))
         // ($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
         lam_value res = lam_eval(vm, expr);
@@ -300,33 +299,33 @@ void test_all(lam_hooks& hooks) {
 
     if (1) {
         lam_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm,R"---(
-(begin
-    ($define ltest
-        ($lambda args
-            (print args)))
-    ($define
-        (vtest . args)
-        (print args))
-    (ltest 1 2)
-    (ltest 1
-        (+ 2 2))
-    (vtest 1 2)
-    (vtest 1 2
-        (+ 3 5))
-    ($define
-        (curry1 fn arg1)
-        ($lambda (x)
-            (fn arg1 x)))
-    ($define
-        (count item L)
-        (mapreduce
-            (curry1 equal? item) + L))
-    ($define answer
-        (count 0
-            (list 0 1 2 0 3 0 0)))
-    (print "cnt=" answer "\n")
-answer)
+        lam_value expr = lam_parse_or_die(vm, R"---(
+            (begin .)
+            ($define ltest
+                ($lambda args
+                    (print args)))
+            ($define
+                (vtest . args)
+                (print args))
+            (ltest 1 2)
+            (ltest 1
+                (+ 2 2))
+            (vtest 1 2)
+            (vtest 1 2
+                (+ 3 5))
+            ($define
+                (curry1 fn arg1)
+                ($lambda (x)
+                    (fn arg1 x)))
+            ($define
+                (count item L)
+                (mapreduce
+                    (curry1 equal? item) + L))
+            ($define answer
+                (count 0
+                    (list 0 1 2 0 3 0 0)))
+            (print "cnt=" answer "\n")
+            answer
         )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 4);
@@ -337,24 +336,24 @@ answer)
         lam_vm* vm = lam_vm_new(&hooks);
         //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
         lam_value expr = lam_parse_or_die(vm, R"---(
-            (begin
-                (print "hello\n")
-                ($define (test_one expr) (begin ($define a 202) (eval expr)))
-                ($define (test_two expr) (begin ($define a 999) (eval expr)))
-                ($define qfoo ($quote (+ (* 6 7) a)))
-                ($define lfoo (list + (* 6 7) ($quote a)))
-                (print "qfoo" qfoo "\n")
-                (print "lfoo" lfoo "\n")
-                (print (test_one qfoo) "\n")
-                (print (test_two qfoo) "\n")
-                (print (test_one lfoo) "\n")
-                (print (test_two lfoo) "\n")
+            (begin .)
+            (print "hello\n")
+            ($define (test_one expr) (begin ($define a 202) (eval expr)))
+            ($define (test_two expr) (begin ($define a 999) (eval expr)))
+            ($define qfoo ($quote (+ (* 6 7) a)))
+            ($define lfoo (list + (* 6 7) ($quote a)))
+            (print "qfoo" qfoo "\n")
+            (print "lfoo" lfoo "\n")
+            (print (test_one qfoo) "\n")
+            (print (test_two qfoo) "\n")
+            (print (test_one lfoo) "\n")
+            (print (test_two lfoo) "\n")
 
-                ($define envp (begin ($define a 10) ($define b 20) (getenv)))
-                (print "Y " a b "\n")
-                (print "X " envp (eval qfoo envp))
+            ($define envp (begin ($define a 10) ($define b 20) (getenv)))
+            (print "Y " a b "\n")
+            (print "X " envp (eval qfoo envp))
 
-                303)
+            303
             )---");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.as_int() == 303);
