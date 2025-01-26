@@ -1,4 +1,5 @@
 #pragma once
+// Internal interfaces.
 
 #include <cstdint>
 #include <string>

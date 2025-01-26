@@ -1,6 +1,9 @@
 
 Experiment based on https://norvig.com/lispy.html and http://norvig.com/lispy2.html
 
+See 'src/littlelambda.h' for the public interface. (style inspired by Lua).
+See 'src/lam__*' for the implementation details.
+
 Features:
  * Written in a simple subset of C++.
  * NaN boxing. Basic types such as int/double are 64 bits and do not go to the heap.

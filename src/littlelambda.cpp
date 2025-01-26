@@ -1,7 +1,6 @@
 #include "littlelambda.h"
 #include "lam_core.h"
 
-lila_hooks::~lila_hooks() = default;
 
 lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
     const char* next = nullptr;

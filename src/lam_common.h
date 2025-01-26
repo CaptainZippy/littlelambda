@@ -1,4 +1,5 @@
 #pragma once
+// Shared between the public & internal interfaces.
 
 #if defined(_MSC_VER)
 extern void __debugbreak();  // Compiler Intrinsic

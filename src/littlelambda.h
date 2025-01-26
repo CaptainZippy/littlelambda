@@ -1,4 +1,5 @@
 #pragma once
+// Public interfaces.
 
 #include "lam_common.h"
 
