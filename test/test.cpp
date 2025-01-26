@@ -251,9 +251,10 @@ void test_all(lila_hooks& hooks) {
             (circle-area 3)
         )---");
         lila_eval(vm, -1);
-		double d = lila_tonumber(vm, -1);
-        assert(d > 9 * 3.1);
-        assert(d < 9 * 3.2);
+        lila_value val = lila_peekstack(vm, -1);
+        assert(val.type == lila_type::Double);
+        assert(val.number > 9 * 3.1);
+        assert(val.number < 9 * 3.2);
         lila_vm_delete(vm);
     }
 
@@ -266,7 +267,8 @@ void test_all(lila_hooks& hooks) {
         )---");
         for (int i = 0; i < 1; ++i) {
             lila_eval(vm, -1);
-            //TODO assert(obj.type() == lila_type::BigInt);
+            lila_value val = lila_peekstack(vm, -1);
+            assert(val.type == lila_type::BigInt);
             //TODO printf("%s\n", obj.as_bigint()->str());
         }
         lila_vm_delete(vm);

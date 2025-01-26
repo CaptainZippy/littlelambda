@@ -21,7 +21,7 @@ set(SRCS
     ugc/ugc.h
     .vscode/littlelambda.natvis)
 
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SRCS})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(littlelambda STATIC ${SRCS})
 target_include_directories(littlelambda PUBLIC src)

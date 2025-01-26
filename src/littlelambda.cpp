@@ -1,7 +1,6 @@
 #include "littlelambda.h"
 #include "lam_core.h"
 
-
 lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
     const char* next = nullptr;
     auto cur = static_cast<const char*>(data);
@@ -70,6 +69,30 @@ lila_result lila_push_opaque(lila_vm* vm, unsigned long long u) {
 
 void lila_print(lila_vm* vm, int index, const char* end) {
     lam_print(vm, vm->stack[index], end);
+}
+
+lila_value lila_peekstack(lila_vm* vm, int index) {
+    const lam_value& val = vm->stack[index];
+    switch (val.type()) {
+        case lam_type::Null:
+            return {.type = lila_type::Null};
+        case lam_type::Double:
+            return {.type = lila_type::Double, .number=val.as_double()};
+        case lam_type::Int:
+            return {.type=lila_type::Int, .integer=val.as_int()};
+        case lam_type::Opaque:
+            return {.type = lila_type::Opaque, .opaque = val.as_opaque()};
+        case lam_type::BigInt:
+            return {.type = lila_type::BigInt};
+        case lam_type::String:
+            return {.type = lila_type::String, .string = val.as_string()->val()};
+        case lam_type::Symbol:
+            return {.type = lila_type::Symbol, .symbol = val.as_symbol()->val()};
+
+        default:
+            assert(false);
+            return {lila_type::Null};
+    }
 }
 
 double lila_tonumber(lila_vm* vm, int index) {

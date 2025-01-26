@@ -30,9 +30,39 @@ void lila_print(lila_vm* vm, int index, const char* end = nullptr);
 /// Push the opaque value on top of the stack.
 lila_result lila_push_opaque(lila_vm* vm, unsigned long long u);
 
-/// 
+enum class lila_type : unsigned char {
+    Null = 0,
+    Double = 1,
+    Int = 2,
+    Opaque = 3,
+    BigInt = 10,
+    String = 11,
+    Symbol = 12,
+    List = 13,
+    Applicative = 14,
+    Operative = 15,
+    Environment = 16,
+    Error = 17,
+};
+
+struct lila_value {
+    lila_type type;
+    union {
+        double number;
+        int integer;
+        unsigned long long opaque;
+        const char* string;
+        const char* symbol;
+    };
+};
+
+/// Peek at the value at stack[index].
+/// The value is only valid until the next mutation.
+lila_value lila_peekstack(lila_vm* vm, int index);
+
+///
 double lila_tonumber(lila_vm* vm, int index);
-/// 
+///
 int lila_tointeger(lila_vm* vm, int index);
 
 bool lila_isnull(lila_vm* vm, int index);
