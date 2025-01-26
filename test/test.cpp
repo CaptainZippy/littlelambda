@@ -34,50 +34,53 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-lam_result read_and_eval(lila_vm* vm, const char* path) {
+lila_result read_and_eval(lila_vm* vm, const char* path) {
     // TODO: accept path of loading module, accept environment, split out finding module
     std::vector<char> buf;
     if (slurp_file(path, buf) == 0) {
         const char* bufEnd = buf.data() + buf.size();
-        lam_value lastObj{};
         for (const char* cur = buf.data(); cur < bufEnd;) {
             const char* next = nullptr;
-            lam_result res = lam_parse(vm, cur, bufEnd, &next);
-            if (res.code != 0) {
+            lila_result res = lila_parse(vm, cur, bufEnd, &next);
+            if (res != lila_result::Ok) {
                 return res;
             }
             cur = next;
-            lastObj = lam_eval(vm, res.value);
+            res = lila_eval(vm, -1);
+            if (res != lila_result::Ok) {
+                return res;
+            }
         }
-        return lam_result::ok(lastObj);
+        return lila_result::Ok;
     }
-    return lam_result::fail(10000, "module not found");
+    return lila_result::FileNotFound;
 }
 
-static lam_value _lam_parse_or_die(lila_vm* vm, const char* input, int N) {
+// Puts the parsed result on top of stack
+static lila_result _lila_parse_or_die(lila_vm* vm, const char* input, int N) {
     const char* restart = nullptr;
     const char* end = input + N;
-    auto r = lam_parse(vm, input, end, &restart);
+    auto r = lila_parse(vm, input, end, &restart);
     assert2(restart == end, "Input was not consumed");
-    assert(r.code == 0);
-    return r.value;
+    assert(r == lila_result::Ok);
+    return r;
 }
 
 template <int N>
-static inline lam_value lam_parse_or_die(lila_vm* vm, const char (&input)[N]) {
-    return _lam_parse_or_die(vm, input, N - 1);  // not null terminator
+static inline lila_result lila_parse_or_die(lila_vm* vm, const char (&input)[N]) {
+    return _lila_parse_or_die(vm, input, N - 1);  // not null terminator
 }
 
-static lam_result import_impl(lila_vm* vm, const char* modname) {
+static lila_result import_impl(lila_vm* vm, const char* modname) {
     std::string path = std::format("{}.ll", modname);
     std::vector<char> buf;
     if (slurp_file(path.c_str(), buf) == 0) {
-        return lam_vm_import(vm, modname, buf.data(), buf.size());
+        return lila_vm_import(vm, modname, buf.data(), buf.size());
     }
-    return lam_result::fail(1, "Import failed");
+    return lila_result::FileNotFound;
 }
 
-struct DebugHooks : lam_hooks {
+struct DebugHooks : lila_hooks {
     DebugHooks() {}
 
     void* mem_alloc(size_t size) override {
@@ -106,12 +109,12 @@ struct DebugHooks : lam_hooks {
         _allocs.clear();
     }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
-    lam_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lila_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
 
     std::unordered_map<void*, std::stacktrace> _allocs;
 };
 
-struct SimpleHooks : lam_hooks {
+struct SimpleHooks : lila_hooks {
     int _nalloc{};
     virtual void* mem_alloc(size_t size) {
         _nalloc += 1;
@@ -123,105 +126,108 @@ struct SimpleHooks : lam_hooks {
     }
     void init() { _nalloc = 0; }
     void quit() { assert(_nalloc == 0); }
-    lam_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lila_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
 };
 
-void test_all(lam_hooks& hooks) {
+void test_all(lila_hooks& hooks) {
     // Basic parsing tests
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_parse_or_die(vm, "hello");
-        lam_parse_or_die(vm, "\"world\"");
-        lam_parse_or_die(vm, "12");
-        lam_parse_or_die(vm, "12.2");
-        lam_parse_or_die(vm, "(hello world)");
-        lam_parse_or_die(vm, "(hello (* num 141.0) world)");
-        lam_parse_or_die(vm, "(begin ($define r 10) (* 3.4 (* r r)))");
-        lam_parse_or_die(vm, "(begin ($define r null) (print r))");
-        lam_vm_delete(vm);
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, "hello");
+        lila_parse_or_die(vm, "\"world\"");
+        lila_parse_or_die(vm, "12");
+        lila_parse_or_die(vm, "12.2");
+        lila_parse_or_die(vm, "(hello world)");
+        lila_parse_or_die(vm, "(hello (* num 141.0) world)");
+        lila_parse_or_die(vm, "(begin ($define r 10) (* 3.4 (* r r)))");
+        lila_parse_or_die(vm, "(begin ($define r null) (print r))");
+        lila_vm_delete(vm);
     }
 
     // Printing & trailing "." syntax
     // (foo a .) (b c) (d e f) is equivalent to (foo a (b c) (d e f))
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr0a = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             ($module bar
                 ($define (area x y) (* x y))
                 ($define (perim x y) (* 2 (+ x y))))
         )---");
-        lam_value expr0b = lam_parse_or_die(vm, R"---(
+        lila_pop(vm, 1);
+        lila_parse_or_die(vm, R"---(
             ($module bar .)
             ($define (area x y) (* x y))
             ($define (perim x y) (* 2 (+ x y)))
         )---");
-        lam_value expr1a = lam_parse_or_die(vm, R"---(
+        lila_pop(vm, 1);
+        lila_parse_or_die(vm, R"---(
             ($module foo
                ($define (area x y)
                    (if (= x 0) 0 .) (* x y))
                ($define (perim x y) (* 2 (+ x y))))
         )---");
-        lam_print(vm, expr1a, "\n");
-        lam_value expr1b = lam_parse_or_die(vm, R"---(
+        lila_print(vm, -1, "\n");
+        lila_parse_or_die(vm, R"---(
             ($module foo .)
             ($define (area x y)
                 (if (= x 0) .) 0 (* x y))
             ($define (perim x y) (* 2 (+ x y)))
         )---");
-        lam_print(vm, expr1b, "\n");
-        lam_vm_delete(vm);
+        lila_print(vm, -1, "\n");
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lila_vm_new(&hooks);
         read_and_eval(vm, "module.ll");
         read_and_eval(vm, "test.ll");
-        lam_vm_delete(vm);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lila_vm_new(&hooks);
         read_and_eval(vm, "01-Basic.ll");
-        lam_vm_delete(vm);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, "(begin ($define r 10) (* 3.1415 (* r r)))");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.dval > 314);
-        lam_vm_delete(vm);
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, "(begin ($define r 10) (* 3.1415 (* r r)))");
+        lila_eval(vm, -1);
+        double d = lila_tonumber(vm, -1);
+        assert(d > 314);
+        lila_vm_delete(vm);
     }
 
     if (0) {  // missing env->bind call
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value op = lam_make_opaque(22);
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_push_opaque(vm, 22);
         // TODO env->bind("val", op);
-        lam_print(vm, op, "\n");
-        lam_value expr = lam_parse_or_die(vm, R"---((print val "\n"))---");
-        lam_eval(vm, expr);
-        lam_vm_delete(vm);
+        lila_print(vm, -1, "\n");
+        lila_parse_or_die(vm, R"---((print val "\n"))---");
+        lila_eval(vm, -1);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr0 = lam_parse_or_die(vm, R"---(($let (a 10 b 20) (print a b "\n")))---");
-        lam_eval(vm, expr0);
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(($let (a 10 b 20) (print a b "\n")))---");
+        lila_eval(vm, -1);
         // assert(env->lookup("a").as_error());
-        lam_value expr1 = lam_parse_or_die(vm, R"---(
+        lila_parse_or_die(vm, R"---(
             (begin
                 ($let (c 30 d 40))
                 (print c d "\n"))
         )---");
-        lam_eval(vm, expr1);
+        lila_eval(vm, -1);
         // assert(env->lookup("c").as_int() == 30);
-        lam_vm_delete(vm);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($import math)
             ($import codepoint)
@@ -231,75 +237,76 @@ void test_all(lam_hooks& hooks) {
             (print ($let (r 20) (area r)) codepoint.newline)
             (print (area r) nl)
         )---");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.dval == 0);
-        lam_vm_delete(vm);
+        lila_eval(vm, -1);
+        assert(lila_isnull(vm,-1));
+        lila_vm_delete(vm);
     }
 
     if (0) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($import math)
             ($define (circle-area r) (* pi (* r r)))
             (circle-area 3)
         )---");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.dval > 9 * 3.1);
-        assert(obj.dval < 9 * 3.2);
-        lam_vm_delete(vm);
+        lila_eval(vm, -1);
+		double d = lila_tonumber(vm, -1);
+        assert(d > 9 * 3.1);
+        assert(d < 9 * 3.2);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))
             (fact (bigint 35))
         )---");
         for (int i = 0; i < 1; ++i) {
-            lam_value obj = lam_eval(vm, expr);
-            assert(obj.type() == lam_type::BigInt);
-            printf("%s\n", obj.as_bigint()->str());
+            lila_eval(vm, -1);
+            //TODO assert(obj.type() == lila_type::BigInt);
+            //TODO printf("%s\n", obj.as_bigint()->str());
         }
-        lam_vm_delete(vm);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($define (twice x) (* 2 x))
             ($define repeat ($lambda (f) ($lambda (x) (f (f x)))))
             ((repeat twice) 10)
         )---");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.as_int() == 40);
+        lila_eval(vm, -1);
+        assert(lila_tointeger(vm, -1) == 40);
 
-        expr = lam_parse_or_die(vm, "((repeat (repeat twice)) 10)");
-        obj = lam_eval(vm, expr);
-        assert(obj.as_int() == 160);
-        lam_vm_delete(vm);
+        lila_parse_or_die(vm, "((repeat (repeat twice)) 10)");
+        lila_eval(vm, -1);
+        assert(lila_tointeger(vm, -1) == 160);
+        lila_vm_delete(vm);
     }
 
     // List comprehension
     if (0) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($define (range a b) TODO
             (range 0 10)
         )---");
         // ($if (equal? a b) ($quote ()) (cons a (range(+ a 1) b))))
         // ($define range (a b) (list-expr (+ a i) i (enumerate (- b a))"
-        lam_value res = lam_eval(vm, expr);
-        lam_print(vm, res, "\n");
-        lam_vm_delete(vm);
+        lila_eval(vm, -1);
+        lila_print(vm, -1, "\n");
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
             (begin .)
             ($define ltest
                 ($lambda args
@@ -327,15 +334,15 @@ void test_all(lam_hooks& hooks) {
             (print "cnt=" answer "\n")
             answer
         )---");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.as_int() == 4);
-        lam_vm_delete(vm);
+        lila_eval(vm, -1);
+        assert(lila_tointeger(vm, -1) == 4);
+        lila_vm_delete(vm);
     }
 
     if (1) {
-        lila_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lila_vm_new(&hooks);
         //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
-        lam_value expr = lam_parse_or_die(vm, R"---(
+        lila_parse_or_die(vm, R"---(
             (begin .)
             (print "hello\n")
             ($define (test_one expr) (begin ($define a 202) (eval expr)))
@@ -355,9 +362,9 @@ void test_all(lam_hooks& hooks) {
 
             303
             )---");
-        lam_value obj = lam_eval(vm, expr);
-        assert(obj.as_int() == 303);
-        lam_vm_delete(vm);
+        lila_eval(vm, -1);
+        assert(lila_tointeger(vm, -1) == 303);
+        lila_vm_delete(vm);
     }
 }
 

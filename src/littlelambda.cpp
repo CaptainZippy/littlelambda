@@ -51,11 +51,35 @@ static bool _try_parse_as(const char* start, const char* end, T& out, V... v) {
     return false;
 }
 
-lam_hooks::~lam_hooks() = default;
+lila_hooks::~lila_hooks() = default;
+
+struct lam_stack : private std::vector<lam_value> {
+    using vector::begin;
+    using vector::end;
+    using vector::push_back;
+    using vector::back;
+    using vector::resize;
+    using vector::size;
+    lam_value& operator[](int i) {
+        if (i >= 0) {
+            return vector::operator[](i);
+        } else {
+            return vector::operator[](size() + i);
+        }
+    }
+    const lam_value& operator[](int i) const {
+        if (i >= 0) {
+            return vector::operator[](i);
+        } else {
+            return vector::operator[](size() + i);
+        }
+    }
+};
 
 struct lila_vm {
     ugc_t gc{};
-    lam_hooks* hooks{};
+    lam_stack stack;
+    lila_hooks* hooks{};
     lam_env* root{};
     std::unordered_map<std::string, lam_value> imports{};
     struct {
@@ -783,11 +807,11 @@ static lam_env* lam_make_env_builtin(lila_vm* vm) {
             auto modname = a[0].as_symbol();
             auto it = env->vm->imports.find(modname->val());
             if (it == env->vm->imports.end()) {
-                lam_result result = env->vm->hooks->import(env->vm, modname->val());
-                if (result.code == 0) {
-                    return result.value;
+                lila_result result = env->vm->hooks->import(env->vm, modname->val());
+                if (result == lila_result::Ok) {
+                    return env->vm->stack.back();
                 } else {
-                    return lam_make_error(env->vm, ImportNotFound, result.msg);
+                    return lam_make_error(env->vm, ImportNotFound, "result.msg");
                 }
             } else {
                 lam_value m = it->second;
@@ -870,7 +894,7 @@ static lam_env* lam_make_env_builtin(lila_vm* vm) {
             for (auto i = 0; i < n; ++i) {
                 lam_print(env->vm, a[i]);
             }
-            return lam_value{};
+            return lam_make_null();
         });
 
     ret->bind_applicative(
@@ -1183,6 +1207,11 @@ static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
                 ugc_visit(gc, &o->header);
             }
         }
+        for (auto&& s : vm->stack) {
+            if (lam_obj* o = s.obj_cast_value()) {
+                ugc_visit(gc, &o->header);
+            }
+        }
     } else {
         static_assert(offsetof(lam_obj, header) == 0);
         lam_obj* obj = reinterpret_cast<lam_obj*>(header);
@@ -1248,7 +1277,9 @@ static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
     vm->hooks->mem_free(gobj);
 }
 
-lam_result lam_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
+// Public interface
+
+lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
     const char* next = nullptr;
     auto cur = static_cast<const char*>(data);
     auto end = static_cast<const char*>(data) + len;
@@ -1257,17 +1288,18 @@ lam_result lam_vm_import(lila_vm* vm, const char* name, const void* data, size_t
     while (cur < end) {
         lam_result res = lam_parse(vm, cur, end, &next);
         if (res.code != 0) {
-            return res;
+            return lila_result::Fail;
         }
         lam_value v = lam_eval(res.value, env);
         cur = next;
     }
     lam_value mod = lam_make_value(env);
     vm->root->bind(name, mod);
-    return lam_result::ok(mod);
+    vm->stack.push_back(mod);
+    return lila_result::Ok;
 }
 
-lila_vm* lam_vm_new(lam_hooks* hooks) {
+lila_vm* lila_vm_new(lila_hooks* hooks) {
     hooks->init();
     void* addr = hooks->mem_alloc(sizeof(lila_vm));
     lila_vm* vm = new (addr) lila_vm;
@@ -1284,7 +1316,58 @@ static inline void swap_reset_container(T& t) {
     t.swap(e);
 }
 
-void lam_vm_delete(lila_vm* vm) {
+lila_result lila_parse(lila_vm* vm, const char* input, const char* end, const char** restart) {
+    lam_result res = lam_parse(vm, input, end, restart);
+    if (res.code != 0) {
+        return lila_result::Fail;
+    }
+    vm->stack.push_back(res.value);
+    return lila_result::Ok;
+}
+
+lila_result lila_eval(lila_vm* vm, int index) {
+    lam_value val = lam_eval(vm, vm->stack[index]);
+    vm->stack[index] = val;
+    return lila_result::Ok;
+}
+
+lila_result lila_pop(lila_vm* vm, int n) {
+    assert(n >= 0);
+    if (n > vm->stack.size()) {
+        return lila_result::Fail;
+    }
+    vm->stack.resize(vm->stack.size() - n);
+    return lila_result::Ok;
+}
+
+lila_result lila_push_opaque(lila_vm* vm, unsigned long long u) {
+    vm->stack.push_back(lam_make_opaque(u));
+    return lila_result::Ok;
+}
+
+void lila_print(lila_vm* vm, int index, const char* end) {
+    lam_print(vm, vm->stack[index], end);
+}
+
+double lila_tonumber(lila_vm* vm, int index) {
+    const lam_value& v = vm->stack[index];
+    assert(v.type() == lam_type::Double);
+    return v.as_double();
+}
+
+int lila_tointeger(lila_vm* vm, int index) {
+    const lam_value& v = vm->stack[index];
+    assert(v.type() == lam_type::Int);
+    return v.as_int();
+}
+
+bool lila_isnull(lila_vm* vm, int index) {
+    const lam_value& v = vm->stack[index];
+    return v.type() == lam_type::Null;
+}
+
+void lila_vm_delete(lila_vm* vm) {
+    vm->stack.resize(0);
     // Test: remove garbage
     ugc_collect(&vm->gc);
     // Test: everything else

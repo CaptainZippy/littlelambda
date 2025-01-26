@@ -310,29 +310,66 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 /// Evaluate the given value.
 lam_value lam_eval(lila_vm* vm, lam_value val);
 
-/// Sets the 'restart' pointer to past the end of the input consumed.
-/// Call this multiple times to consume all input.
-lam_result lam_parse(lila_vm* vm, const char* input, const char* end, const char** restart);
-
 /// Print the given value.
 void lam_print(lila_vm* vm, lam_value val, const char* end = nullptr);
 
+
+
+
+// Public Interface
+
+
+struct lila_vm;
+enum class lila_result : int {
+    Ok = 0,
+    Fail = -1,
+    FileNotFound = -2,
+};
+
 /// Functionality provided by external systems.
-struct lam_hooks {
-    virtual ~lam_hooks();
+struct lila_hooks {
+    virtual ~lila_hooks();
     virtual void* mem_alloc(size_t size) =0;
     virtual void mem_free(void* addr) = 0;
     virtual void init() = 0;
     virtual void quit() = 0;
     virtual void output(const char* s, size_t n) = 0;
-    virtual lam_result import(lila_vm* vm, const char* modname) = 0;
+    virtual lila_result import(lila_vm* vm, const char* modname) = 0;
 };
 
-/// Initialize a vm.
-lila_vm* lam_vm_new(lam_hooks* hooks);
+/// Initialize a new vm.
+lila_vm* lila_vm_new(lila_hooks* hooks);
 
 /// Import a module with the given name and contents (sans-io).
-lam_result lam_vm_import(lila_vm* vm, const char* name, const void* data, size_t len);
+lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size_t len);
 
-/// Exit
-void lam_vm_delete(lila_vm* vm);
+/// Parse one statement from the input. On success,
+/// * the statement is placed on top of the stack
+/// * the 'restart' pointer is set past the input consumed
+/// * the return value is 0
+/// On failure, ???
+/// Call this multiple times to consume all input.
+lila_result lila_parse(lila_vm* vm, const char* input, const char* end, const char** restart);
+
+/// Evaluate the top of the stack.
+lila_result lila_eval(lila_vm* vm, int idx);
+
+/// Pop n values from the stack.
+lila_result lila_pop(lila_vm* vm, int n);
+
+/// Print the value at stack[index].
+/// Optionally supply a string to print at the end.
+void lila_print(lila_vm* vm, int index, const char* end = nullptr);
+
+/// Push the opaque value on top of the stack.
+lila_result lila_push_opaque(lila_vm* vm, unsigned long long u);
+
+/// 
+double lila_tonumber(lila_vm* vm, int index);
+/// 
+int lila_tointeger(lila_vm* vm, int index);
+
+bool lila_isnull(lila_vm* vm, int index);
+
+/// Destroy a VM.
+void lila_vm_delete(lila_vm* vm);
