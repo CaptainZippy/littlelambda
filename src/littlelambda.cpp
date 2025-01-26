@@ -53,7 +53,7 @@ static bool _try_parse_as(const char* start, const char* end, T& out, V... v) {
 
 lam_hooks::~lam_hooks() = default;
 
-struct lam_vm {
+struct lila_vm {
     ugc_t gc{};
     lam_hooks* hooks{};
     lam_env* root{};
@@ -68,7 +68,7 @@ struct lam_vm {
 // Allocate and zero "sizeof(T) + extra" bytes
 // Register T with the garbage collector
 template <typename T>
-static T* callocPlus(lam_vm* vm, size_t extra) {
+static T* callocPlus(lila_vm* vm, size_t extra) {
     void* p = vm->hooks->mem_alloc(sizeof(T) + extra);
     memset(p, 0, sizeof(T) + extra);
     auto o = reinterpret_cast<T*>(p);
@@ -79,7 +79,7 @@ static T* callocPlus(lam_vm* vm, size_t extra) {
 
 // Parse null terminated 'input'
 // Set 'restart' to the end of parsing.
-lam_result lam_parse(lam_vm* vm, const char* input, const char* endInput, const char** restart) {
+lam_result lam_parse(lila_vm* vm, const char* input, const char* endInput, const char** restart) {
     *restart = input;
     // No recursion - explicit stack for lists.
     std::vector<std::vector<lam_value>> stack;
@@ -274,7 +274,7 @@ lam_result lam_parse(lam_vm* vm, const char* input, const char* endInput, const 
     return lam_result::ok(lam_make_int(0));
 }
 
-lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n) {
+lam_value lam_make_symbol(lila_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = callocPlus<lam_symbol>(vm, len + 1);
     d->type = lam_type::Symbol;
@@ -284,7 +284,7 @@ lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_string(lam_vm* vm, const char* s, size_t n) {
+lam_value lam_make_string(lila_vm* vm, const char* s, size_t n) {
     size_t len = n == size_t(-1) ? strlen(s) : n;
     auto* d = callocPlus<lam_string>(vm, len + 1);
     d->type = lam_type::String;
@@ -294,14 +294,14 @@ lam_value lam_make_string(lam_vm* vm, const char* s, size_t n) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_bigint(lam_vm* vm, int i) {
+lam_value lam_make_bigint(lila_vm* vm, int i) {
     auto* d = callocPlus<lam_bigint>(vm, 0);
     d->type = lam_type::BigInt;
     mpz_init_set_si(d->mp, i);
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_error(lam_vm* vm, unsigned code, const char* msg) {
+lam_value lam_make_error(lila_vm* vm, unsigned code, const char* msg) {
     auto* d = callocPlus<lam_error>(vm, 0);
     d->type = lam_type::Error;
     d->code = code;
@@ -309,7 +309,7 @@ lam_value lam_make_error(lam_vm* vm, unsigned code, const char* msg) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_bigint(lam_vm* vm, mpz_t m) {
+lam_value lam_make_bigint(lila_vm* vm, mpz_t m) {
     auto* d = callocPlus<lam_bigint>(vm, 0);
     d->type = lam_type::BigInt;
     static_assert(sizeof(d->mp) == 16);
@@ -317,7 +317,7 @@ lam_value lam_make_bigint(lam_vm* vm, mpz_t m) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t len) {
+lam_value lam_make_list_v(lila_vm* vm, const lam_value* values, size_t len) {
     auto* d = callocPlus<lam_list>(vm, len * sizeof(lam_value));
     d->type = lam_type::List;
     d->len = len;
@@ -326,12 +326,12 @@ lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t len) {
     return {.uval = lam_u64(d) | lam_Magic::TagObj};
 }
 
-lam_env::lam_env(lam_vm* v) : lam_obj(lam_type::Environment), vm(v) {}
+lam_env::lam_env(lila_vm* v) : lam_obj(lam_type::Environment), vm(v) {}
 
 struct lam_env_impl : lam_env {
     inline void* operator new(std::size_t n, void* ptr) { return ptr; }
 
-    lam_env_impl(lam_vm* vm, lam_env* parent, const char* name)
+    lam_env_impl(lila_vm* vm, lam_env* parent, const char* name)
         : lam_env(vm), _parent{parent}, _name{name} {}
 
     struct string_hash {
@@ -353,13 +353,13 @@ struct lam_env_impl : lam_env {
     bool _sealed{false};
 };
 
-static lam_env* lam_new_env(lam_vm* vm, lam_env* parent, const char* name) {
+static lam_env* lam_new_env(lila_vm* vm, lam_env* parent, const char* name) {
     assert(parent == nullptr || vm == static_cast<lam_env_impl*>(parent)->vm);
     auto* d = callocPlus<lam_env_impl>(vm, 0);
     return new (d) lam_env_impl(vm, parent, name);
 }
 
-lam_value lam_make_env(lam_vm* vm, lam_env* parent, const char* name) {
+lam_value lam_make_env(lila_vm* vm, lam_env* parent, const char* name) {
     return {.uval = lam_u64(lam_new_env(vm, parent, name)) | lam_Magic::TagObj};
 }
 
@@ -516,7 +516,7 @@ static bool truthy(lam_value v) {
     return false;
 }
 
-void lam_print(lam_vm* vm, lam_value val, const char* end) {
+void lam_print(lila_vm* vm, lam_value val, const char* end) {
     /*struct Adaptor {
         using difference_type = std::ptrdiff_t;
         char buf[64];
@@ -619,7 +619,7 @@ static constexpr int combine_numeric_types(lam_type xt, lam_type yt) {
     return (int(xm) << 2) | int(ym);
 }
 
-static lam_env* lam_make_env_builtin(lam_vm* vm) {
+static lam_env* lam_make_env_builtin(lila_vm* vm) {
     lam_env* ret = lam_new_env(vm, nullptr, "builtin");
 #if false
     if (hooks) {
@@ -1167,14 +1167,14 @@ static lam_value lam_eval(lam_value val, lam_env* env) {
     }
 }
 
-lam_value lam_eval(lam_vm* vm, lam_value val) {
+lam_value lam_eval(lila_vm* vm, lam_value val) {
     return lam_eval(val, vm->root);
 }
 
 static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
     if (header == nullptr) {
         assert(gc->userdata == gc);
-        auto vm = reinterpret_cast<lam_vm*>(gc);
+        auto vm = reinterpret_cast<lila_vm*>(gc);
         if (auto r = vm->root) {
             ugc_visit(gc, &r->header);
         }
@@ -1235,7 +1235,7 @@ static void lam_ugc_visit(ugc_t* gc, ugc_header_t* header) {
 static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
     static_assert(offsetof(lam_obj, header) == 0);
     auto obj = reinterpret_cast<lam_obj*>(gobj);
-    auto vm = reinterpret_cast<lam_vm*>(gc->userdata);
+    auto vm = reinterpret_cast<lila_vm*>(gc->userdata);
     vm->gc_stats.free_count += 1;
     switch (obj->type) {
         case lam_type::Environment:
@@ -1248,7 +1248,7 @@ static void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj) {
     vm->hooks->mem_free(gobj);
 }
 
-lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t len) {
+lam_result lam_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
     const char* next = nullptr;
     auto cur = static_cast<const char*>(data);
     auto end = static_cast<const char*>(data) + len;
@@ -1267,10 +1267,10 @@ lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t 
     return lam_result::ok(mod);
 }
 
-lam_vm* lam_vm_new(lam_hooks* hooks) {
+lila_vm* lam_vm_new(lam_hooks* hooks) {
     hooks->init();
-    void* addr = hooks->mem_alloc(sizeof(lam_vm));
-    lam_vm* vm = new (addr) lam_vm;
+    void* addr = hooks->mem_alloc(sizeof(lila_vm));
+    lila_vm* vm = new (addr) lila_vm;
     ugc_init(&vm->gc, &lam_ugc_visit, &lam_ugc_free);
     vm->gc.userdata = vm;
     vm->hooks = hooks;
@@ -1284,7 +1284,7 @@ static inline void swap_reset_container(T& t) {
     t.swap(e);
 }
 
-void lam_vm_delete(lam_vm* vm) {
+void lam_vm_delete(lila_vm* vm) {
     // Test: remove garbage
     ugc_collect(&vm->gc);
     // Test: everything else

@@ -52,7 +52,7 @@ struct lam_symbol;
 struct lam_string;
 struct lam_callable;
 struct lam_bigint;
-struct lam_vm;
+struct lila_vm;
 
 namespace lam_Detail {
 #define Type_Traits(X)                \
@@ -243,8 +243,8 @@ struct lam_error : lam_obj {
 
 /// Environments map symbols to values.
 struct lam_env : lam_obj {
-    lam_vm* const vm;
-    lam_env(lam_vm* v);
+    lila_vm* const vm;
+    lam_env(lila_vm* v);
     void bind_multiple(const char* keys[],
                        size_t nkeys,
                        lam_value* values,
@@ -276,20 +276,20 @@ static inline lam_value lam_make_opaque(const void* p) {
 static inline lam_value lam_make_null() {
     return {.uval = lam_Magic::ValueConstNull};
 }
-lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n = size_t(-1));
-lam_value lam_make_string(lam_vm* vm, const char* s, size_t n = size_t(-1));
-lam_value lam_make_bigint(lam_vm* vm, int i);
-lam_value lam_make_error(lam_vm* vm, unsigned code, const char* msg);
+lam_value lam_make_symbol(lila_vm* vm, const char* s, size_t n = size_t(-1));
+lam_value lam_make_string(lila_vm* vm, const char* s, size_t n = size_t(-1));
+lam_value lam_make_bigint(lila_vm* vm, int i);
+lam_value lam_make_error(lila_vm* vm, unsigned code, const char* msg);
 
 template <typename... Args>
-static inline lam_value lam_make_list_l(lam_vm* vm, Args... args) {
+static inline lam_value lam_make_list_l(lila_vm* vm, Args... args) {
     lam_value values[] = {args...};
     return lam_make_list_v(vm, values, sizeof...(Args));
 }
 
-lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t N);
+lam_value lam_make_list_v(lila_vm* vm, const lam_value* values, size_t N);
 
-lam_value lam_make_env(lam_vm* vm, lam_env* parent, const char* name);
+lam_value lam_make_env(lila_vm* vm, lam_env* parent, const char* name);
 
 // If code==0, 'value' is valid, otherwise 'msg'. TODO union?
 struct lam_result {
@@ -308,14 +308,14 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 // lam_value lam_eval(lam_value val, lam_env* env);
 
 /// Evaluate the given value.
-lam_value lam_eval(lam_vm* vm, lam_value val);
+lam_value lam_eval(lila_vm* vm, lam_value val);
 
 /// Sets the 'restart' pointer to past the end of the input consumed.
 /// Call this multiple times to consume all input.
-lam_result lam_parse(lam_vm* vm, const char* input, const char* end, const char** restart);
+lam_result lam_parse(lila_vm* vm, const char* input, const char* end, const char** restart);
 
 /// Print the given value.
-void lam_print(lam_vm* vm, lam_value val, const char* end = nullptr);
+void lam_print(lila_vm* vm, lam_value val, const char* end = nullptr);
 
 /// Functionality provided by external systems.
 struct lam_hooks {
@@ -325,14 +325,14 @@ struct lam_hooks {
     virtual void init() = 0;
     virtual void quit() = 0;
     virtual void output(const char* s, size_t n) = 0;
-    virtual lam_result import(lam_vm* vm, const char* modname) = 0;
+    virtual lam_result import(lila_vm* vm, const char* modname) = 0;
 };
 
 /// Initialize a vm.
-lam_vm* lam_vm_new(lam_hooks* hooks);
+lila_vm* lam_vm_new(lam_hooks* hooks);
 
 /// Import a module with the given name and contents (sans-io).
-lam_result lam_vm_import(lam_vm* vm, const char* name, const void* data, size_t len);
+lam_result lam_vm_import(lila_vm* vm, const char* name, const void* data, size_t len);
 
 /// Exit
-void lam_vm_delete(lam_vm* vm);
+void lam_vm_delete(lila_vm* vm);

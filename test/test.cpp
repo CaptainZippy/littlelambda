@@ -34,7 +34,7 @@ static int slurp_file(const char* path, std::vector<char>& buf) {
     return 0;
 }
 
-lam_result read_and_eval(lam_vm* vm, const char* path) {
+lam_result read_and_eval(lila_vm* vm, const char* path) {
     // TODO: accept path of loading module, accept environment, split out finding module
     std::vector<char> buf;
     if (slurp_file(path, buf) == 0) {
@@ -54,7 +54,7 @@ lam_result read_and_eval(lam_vm* vm, const char* path) {
     return lam_result::fail(10000, "module not found");
 }
 
-static lam_value _lam_parse_or_die(lam_vm* vm, const char* input, int N) {
+static lam_value _lam_parse_or_die(lila_vm* vm, const char* input, int N) {
     const char* restart = nullptr;
     const char* end = input + N;
     auto r = lam_parse(vm, input, end, &restart);
@@ -64,11 +64,11 @@ static lam_value _lam_parse_or_die(lam_vm* vm, const char* input, int N) {
 }
 
 template <int N>
-static inline lam_value lam_parse_or_die(lam_vm* vm, const char (&input)[N]) {
+static inline lam_value lam_parse_or_die(lila_vm* vm, const char (&input)[N]) {
     return _lam_parse_or_die(vm, input, N - 1);  // not null terminator
 }
 
-static lam_result import_impl(lam_vm* vm, const char* modname) {
+static lam_result import_impl(lila_vm* vm, const char* modname) {
     std::string path = std::format("{}.ll", modname);
     std::vector<char> buf;
     if (slurp_file(path.c_str(), buf) == 0) {
@@ -106,7 +106,7 @@ struct DebugHooks : lam_hooks {
         _allocs.clear();
     }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
-    lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lam_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
 
     std::unordered_map<void*, std::stacktrace> _allocs;
 };
@@ -123,14 +123,14 @@ struct SimpleHooks : lam_hooks {
     }
     void init() { _nalloc = 0; }
     void quit() { assert(_nalloc == 0); }
-    lam_result import(lam_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lam_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
 };
 
 void test_all(lam_hooks& hooks) {
     // Basic parsing tests
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_parse_or_die(vm, "hello");
         lam_parse_or_die(vm, "\"world\"");
         lam_parse_or_die(vm, "12");
@@ -145,7 +145,7 @@ void test_all(lam_hooks& hooks) {
     // Printing & trailing "." syntax
     // (foo a .) (b c) (d e f) is equivalent to (foo a (b c) (d e f))
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr0a = lam_parse_or_die(vm, R"---(
             ($module bar
                 ($define (area x y) (* x y))
@@ -174,20 +174,20 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         read_and_eval(vm, "module.ll");
         read_and_eval(vm, "test.ll");
         lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         read_and_eval(vm, "01-Basic.ll");
         lam_vm_delete(vm);
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, "(begin ($define r 10) (* 3.1415 (* r r)))");
         lam_value obj = lam_eval(vm, expr);
         assert(obj.dval > 314);
@@ -195,7 +195,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (0) {  // missing env->bind call
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value op = lam_make_opaque(22);
         // TODO env->bind("val", op);
         lam_print(vm, op, "\n");
@@ -205,7 +205,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr0 = lam_parse_or_die(vm, R"---(($let (a 10 b 20) (print a b "\n")))---");
         lam_eval(vm, expr0);
         // assert(env->lookup("a").as_error());
@@ -220,7 +220,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($import math)
@@ -237,7 +237,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (0) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($import math)
@@ -251,7 +251,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($define (fact n) ($if (<= n 1) 1 (* n (fact (- n 1))) ))
@@ -266,7 +266,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($define (twice x) (* 2 x))
@@ -284,7 +284,7 @@ void test_all(lam_hooks& hooks) {
 
     // List comprehension
     if (0) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($define (range a b) TODO
@@ -298,7 +298,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
             ($define ltest
@@ -333,7 +333,7 @@ void test_all(lam_hooks& hooks) {
     }
 
     if (1) {
-        lam_vm* vm = lam_vm_new(&hooks);
+        lila_vm* vm = lam_vm_new(&hooks);
         //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
         lam_value expr = lam_parse_or_die(vm, R"---(
             (begin .)
