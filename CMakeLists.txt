@@ -7,6 +7,10 @@ set(SRCS
     README.md
     src/littlelambda.cpp
     src/littlelambda.h
+    src/lam_common.cpp
+    src/lam_common.h
+    src/lam_core.cpp
+    src/lam_core.h
     src/mini-gmp.h
     src/mini-gmp.c
     src/ugc.cpp
