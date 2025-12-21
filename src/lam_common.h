@@ -1,7 +1,8 @@
 #pragma once
 // Shared between the public & internal interfaces.
 
-#include <cstdint>
+#include <cstddef>
+using std::size_t;
 
 #if defined(_MSC_VER)
 extern void __debugbreak();  // Compiler Intrinsic
