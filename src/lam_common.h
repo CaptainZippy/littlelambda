@@ -1,6 +1,8 @@
 #pragma once
 // Shared between the public & internal interfaces.
 
+#include <cstdint>
+
 #if defined(_MSC_VER)
 extern void __debugbreak();  // Compiler Intrinsic
 #define lam_debugbreak() __debugbreak()
