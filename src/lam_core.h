@@ -5,8 +5,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "mini-gmp.h"
 #include "lam_common.h"
+#include "mini-gmp.h"
 extern "C" {
 #include "../ugc/ugc.h"
 }
@@ -239,6 +239,7 @@ struct lam_env : lam_obj {
 
     void seal();
     void bind(const char* name, lam_value value);
+    void bind_upsert(const char* name, lam_value value);
     void bind_applicative(const char* name, lam_invoke b);
     void bind_operative(const char* name, lam_invoke b, void* context = nullptr);
     lam_value lookup(const char* sym) const;
@@ -248,6 +249,7 @@ struct lam_stack : private std::vector<lam_value> {
     using vector::back;
     using vector::begin;
     using vector::end;
+    using vector::pop_back;
     using vector::push_back;
     using vector::resize;
     using vector::size;
@@ -265,6 +267,7 @@ struct lam_stack : private std::vector<lam_value> {
             return vector::operator[](size() + i);
         }
     }
+    void pop(int n) { resize(size() - n); }
 };
 
 struct lila_vm {

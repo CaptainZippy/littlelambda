@@ -17,7 +17,7 @@ lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size
 /// Call this multiple times to consume all input.
 lila_result lila_parse(lila_vm* vm, const char* input, const char* end, const char** restart);
 
-/// Evaluate the top of the stack.
+/// Evaluate stack[idx] and replace it with the evaluation.
 lila_result lila_eval(lila_vm* vm, int idx);
 
 /// Pop n values from the stack.
@@ -30,19 +30,25 @@ void lila_print(lila_vm* vm, int index, const char* end = nullptr);
 /// Push the opaque value on top of the stack.
 lila_result lila_push_opaque(lila_vm* vm, unsigned long long u);
 
+/// Push the symbol value on top of the stack.
+lila_result lila_push_symbol(lila_vm* vm, const char* sym);
+
+/// Push the integer value on top of the stack.
+lila_result lila_push_integer(lila_vm* vm, int val);
+
 enum class lila_type : unsigned char {
     Null = 0,
-    Double = 1,
-    Int = 2,
-    Opaque = 3,
-    BigInt = 10,
-    String = 11,
-    Symbol = 12,
-    List = 13,
-    Applicative = 14,
-    Operative = 15,
-    Environment = 16,
-    Error = 17,
+    Double,
+    Int,
+    Opaque,
+    BigInt,
+    String,
+    Symbol,
+    List,
+    Applicative,
+    Operative,
+    Environment,
+    Error,
 };
 
 struct lila_value {
@@ -56,6 +62,24 @@ struct lila_value {
     };
 };
 
+/// Map assignment: stack[index][k] = v
+/// Assuming k=stack[-2], v=stack[-1], and stack[index] is a map
+/// Pops both the key and value from the stack.
+lila_result lila_setmap(lila_vm* vm, int index);
+
+/// Map fetch: Gets stack[index][k]
+/// Assuming k=stack[-1], and stack[index] is a map
+/// Pops the key from the stack and pushes the value or error.
+lila_result lila_getmap(lila_vm* vm, int index);
+
+/// Function call
+/// Call a function with 'narg' arguments, returning 'nres' values.
+/// The function is pushed first (stack[-narg-1]), then arguments
+/// left to right. On return, the function and arguments are replaced
+/// by the return values.
+lila_result lila_call(lila_vm* vm, int narg, int nres);
+
+
 /// Peek at the value at stack[index].
 /// The value is only valid until the next mutation.
 lila_value lila_peekstack(lila_vm* vm, int index);
@@ -64,7 +88,7 @@ lila_value lila_peekstack(lila_vm* vm, int index);
 double lila_tonumber(lila_vm* vm, int index);
 ///
 int lila_tointeger(lila_vm* vm, int index);
-
+///
 bool lila_isnull(lila_vm* vm, int index);
 
 /// Destroy a VM.

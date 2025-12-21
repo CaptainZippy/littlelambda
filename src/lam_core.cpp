@@ -377,6 +377,12 @@ void lam_env::bind(const char* name, lam_value value) {
     assert(pair.second && "symbol already defined");
 }
 
+void lam_env::bind_upsert(const char* name, lam_value value) {
+    auto self = static_cast<lam_env_impl*>(this);
+    assert(!self->_sealed);
+    self->_map[name] = value;
+}
+
 void lam_env::bind_applicative(const char* name, lam_invoke b) {
     auto self = static_cast<lam_env_impl*>(this);
     assert(!self->_sealed);

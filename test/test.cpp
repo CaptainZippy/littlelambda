@@ -109,7 +109,9 @@ struct DebugHooks : lila_hooks {
         _allocs.clear();
     }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
-    lila_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lila_result import(lila_vm* vm, const char* modname) override {
+        return import_impl(vm, modname);
+    }
 
     std::unordered_map<void*, std::stacktrace> _allocs;
 };
@@ -126,7 +128,9 @@ struct SimpleHooks : lila_hooks {
     }
     void init() { _nalloc = 0; }
     void quit() { assert(_nalloc == 0); }
-    lila_result import(lila_vm* vm, const char* modname) override { return import_impl(vm, modname); }
+    lila_result import(lila_vm* vm, const char* modname) override {
+        return import_impl(vm, modname);
+    }
     void output(const char* s, size_t n) { fwrite(s, 1, n, stdout); }
 };
 
@@ -238,7 +242,7 @@ void test_all(lila_hooks& hooks) {
             (print (area r) nl)
         )---");
         lila_eval(vm, -1);
-        assert(lila_isnull(vm,-1));
+        assert(lila_isnull(vm, -1));
         lila_vm_delete(vm);
     }
 
@@ -269,7 +273,7 @@ void test_all(lila_hooks& hooks) {
             lila_eval(vm, -1);
             lila_value val = lila_peekstack(vm, -1);
             assert(val.type == lila_type::BigInt);
-            //TODO printf("%s\n", obj.as_bigint()->str());
+            // TODO printf("%s\n", obj.as_bigint()->str());
         }
         lila_vm_delete(vm);
     }
@@ -327,9 +331,9 @@ void test_all(lila_hooks& hooks) {
                 ($lambda (x)
                     (fn arg1 x)))
             ($define
-                (count item L)
+                (count item lst) ;; count of occurances of item in list
                 (mapreduce
-                    (curry1 equal? item) + L))
+                    (curry1 equal? item) + lst))
             ($define answer
                 (count 0
                     (list 0 1 2 0 3 0 0)))
@@ -343,7 +347,6 @@ void test_all(lila_hooks& hooks) {
 
     if (1) {
         lila_vm* vm = lila_vm_new(&hooks);
-        //"($define (count item L) ($if L (+ (equal? item (first L)) (count item (rest L))) 0))"
         lila_parse_or_die(vm, R"---(
             (begin .)
             (print "hello\n")
@@ -361,11 +364,53 @@ void test_all(lila_hooks& hooks) {
             ($define envp (begin ($define a 10) ($define b 20) (getenv)))
             (print "Y " a b "\n")
             (print "X " envp (eval qfoo envp))
+            (print "X " envp (eval qfoo envp))
 
             303
             )---");
         lila_eval(vm, -1);
         assert(lila_tointeger(vm, -1) == 303);
+        lila_vm_delete(vm);
+    }
+
+    if (1) {
+        lila_vm* vm = lila_vm_new(&hooks);
+        lila_parse_or_die(vm, R"---(
+            (begin .)
+            ($define envp (begin
+                ($define asdf 101)
+                ($define (func a) (* asdf a))
+                (getenv)))
+            envp
+            )---");
+        // stack has env
+        // asdf should be 101
+        lila_eval(vm, -1);
+        lila_push_symbol(vm, "asdf");
+        lila_getmap(vm, -2);
+        assert(lila_tointeger(vm, -1) == 101);
+        lila_pop(vm, 1);
+
+        // (func 2) == 101*2 == 202
+        lila_push_symbol(vm, "func");
+        lila_getmap(vm, -2);
+        lila_push_integer(vm, 2);
+        lila_call(vm, 1, 1);
+        assert(lila_tointeger(vm, -1) == 202);
+        lila_pop(vm, 1);
+
+        // set asdf = 333
+        lila_push_symbol(vm, "asdf");
+        lila_push_integer(vm, 333);
+        lila_setmap(vm, -3);
+
+        // (func 3) == 333*3 == 909
+        lila_push_symbol(vm, "func");
+        lila_getmap(vm, -2);
+        lila_push_integer(vm, 3);
+        lila_call(vm, 1, 1);
+        assert(lila_tointeger(vm, -1) == 999);
+
         lila_vm_delete(vm);
     }
 }

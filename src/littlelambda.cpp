@@ -67,8 +67,83 @@ lila_result lila_push_opaque(lila_vm* vm, unsigned long long u) {
     return lila_result::Ok;
 }
 
+lila_result lila_push_symbol(lila_vm* vm, const char* sym) {
+    vm->stack.push_back(lam_make_symbol(vm, sym));
+    return lila_result::Ok;
+}
+
+lila_result lila_push_integer(lila_vm* vm, int val) {
+    vm->stack.push_back(lam_make_int(val));
+    return lila_result::Ok;
+}
+
 void lila_print(lila_vm* vm, int index, const char* end) {
     lam_print(vm, vm->stack[index], end);
+}
+
+lila_result lila_setmap(lila_vm* vm, int index) {
+    lam_value m = vm->stack[index];
+    if (m.type() != lam_type::Environment) {
+        vm->stack.pop_back();
+        vm->stack.back() = lam_make_error(vm, 0, "Not a map");
+        return lila_result::Fail;
+    }
+    lam_value k = vm->stack[-2];
+    if (k.type() != lam_type::Symbol) {
+        vm->stack.pop_back();
+        vm->stack.back() = lam_make_error(vm, 0, "Key must be symbol");
+        return lila_result::Fail;
+    }
+    auto env = m.as_env();
+    lam_value val = env->lookup(k.as_symbol()->val());
+    if (val.type() == lam_type::Error) {
+        vm->stack.pop_back();
+        vm->stack.back() = lam_make_error(vm, 0, "Key already exists");
+        return lila_result::Fail;
+    }
+    env->bind_upsert(k.as_symbol()->val(), vm->stack.back());
+    vm->stack.pop(2);
+
+    return lila_result::Ok;
+}
+
+lila_result lila_getmap(lila_vm* vm, int index) {
+    lam_value m = vm->stack[index];
+    if (m.type() != lam_type::Environment) {
+        vm->stack.back() = lam_make_error(vm, 0, "Not a map");
+        return lila_result::Fail;
+    }
+    lam_value k = vm->stack[-1];
+    if (k.type() != lam_type::Symbol) {
+        vm->stack.back() = lam_make_error(vm, 0, "Key must be symbol");
+        return lila_result::Fail;
+    }
+    auto env = m.as_env();
+    lam_value val = env->lookup(k.as_symbol()->val());
+    vm->stack.back() = val;
+    return lila_result::Ok;
+}
+
+lila_result lila_call(lila_vm* vm, int narg, int nres) {
+    assert(narg >= 0);
+    assert(nres == 1);
+    lam_callable* func = vm->stack[-narg - 1].as_callable();
+    if (func == nullptr) {
+        return lila_result::Fail;
+    }
+    while (1) {
+        lam_value_or_tail_call ret = func->invoke(func, vm->root, &vm->stack[-narg], narg);
+        if (ret.env == nullptr) {
+            vm->stack.pop(narg + 1);
+            vm->stack.push_back(ret.value);
+            return lila_result::Ok;
+        } else {
+            lam_value v = lam_eval(ret.value, ret.env);
+            vm->stack.pop(narg + 1);
+            vm->stack.push_back(v);
+            return lila_result::Ok;
+        }
+    }
 }
 
 lila_value lila_peekstack(lila_vm* vm, int index) {
@@ -77,9 +152,9 @@ lila_value lila_peekstack(lila_vm* vm, int index) {
         case lam_type::Null:
             return {.type = lila_type::Null};
         case lam_type::Double:
-            return {.type = lila_type::Double, .number=val.as_double()};
+            return {.type = lila_type::Double, .number = val.as_double()};
         case lam_type::Int:
-            return {.type=lila_type::Int, .integer=val.as_int()};
+            return {.type = lila_type::Int, .integer = val.as_int()};
         case lam_type::Opaque:
             return {.type = lila_type::Opaque, .opaque = val.as_opaque()};
         case lam_type::BigInt:
