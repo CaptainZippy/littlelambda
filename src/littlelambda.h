@@ -1,4 +1,8 @@
 #pragma once
+
+#include <cstddef>
+using std::size_t;
+
 // Public interfaces.
 
 struct lila_vm;

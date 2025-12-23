@@ -2,7 +2,7 @@
 Experiment based on https://norvig.com/lispy.html and http://norvig.com/lispy2.html
 
 See 'src/littlelambda.h' for the public interface. (style inspired by Lua).
-See 'src/lam__*' for the implementation details.
+See 'src/lam_*' for the implementation details.
 
 Features:
  * Written in a simple subset of C++.
