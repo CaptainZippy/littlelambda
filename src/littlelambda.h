@@ -1,7 +1,23 @@
 #pragma once
 // Public interfaces.
 
-#include "lam_common.h"
+struct lila_vm;
+
+enum class lila_result : int {
+    Ok = 0,
+    Fail = -1,
+    FileNotFound = -2,
+};
+
+struct lila_hooks {
+    virtual ~lila_hooks();
+    virtual void* mem_alloc(size_t size) = 0;
+    virtual void mem_free(void* addr) = 0;
+    virtual void init() = 0;
+    virtual void quit() = 0;
+    virtual void output(const char* s, size_t n) = 0;
+    virtual lila_result import(lila_vm* vm, const char* modname) = 0;
+};
 
 /// Initialize a new vm.
 lila_vm* lila_vm_new(lila_hooks* hooks);

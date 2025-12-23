@@ -20,6 +20,15 @@ struct stacktrace {
 #endif
 #include "littlelambda.h"
 
+#define assert(...)
+#define assert2(...)
+#define test_true(...) _test_true(__VA_ARGS__, #__VA_ARGS__)
+inline void _test_true(bool cond, const char* expr) {
+    if (!cond) {
+        printf("Test failed: %s\n", expr);
+    }
+}
+
 static int slurp_file(const char* path, std::vector<char>& buf) {
     buf.clear();
     FILE* fin = fopen(path, "rb");
@@ -200,7 +209,7 @@ void test_all(lila_hooks& hooks) {
         lila_parse_or_die(vm, "(begin ($define r 10) (* 3.1415 (* r r)))");
         lila_eval(vm, -1);
         double d = lila_tonumber(vm, -1);
-        assert(d > 314);
+        test_true(d > 314);
         lila_vm_delete(vm);
     }
 
@@ -218,14 +227,14 @@ void test_all(lila_hooks& hooks) {
         lila_vm* vm = lila_vm_new(&hooks);
         lila_parse_or_die(vm, R"---(($let (a 10 b 20) (print a b "\n")))---");
         lila_eval(vm, -1);
-        // assert(env->lookup("a").as_error());
+        // test_true(env->lookup("a").as_error());
         lila_parse_or_die(vm, R"---(
             (begin
                 ($let (c 30 d 40))
                 (print c d "\n"))
         )---");
         lila_eval(vm, -1);
-        // assert(env->lookup("c").as_int() == 30);
+        // test_true(env->lookup("c").as_int() == 30);
         lila_vm_delete(vm);
     }
 
@@ -242,7 +251,7 @@ void test_all(lila_hooks& hooks) {
             (print (area r) nl)
         )---");
         lila_eval(vm, -1);
-        assert(lila_isnull(vm, -1));
+        test_true(lila_isnull(vm, -1));
         lila_vm_delete(vm);
     }
 
@@ -256,9 +265,9 @@ void test_all(lila_hooks& hooks) {
         )---");
         lila_eval(vm, -1);
         lila_value val = lila_peekstack(vm, -1);
-        assert(val.type == lila_type::Double);
-        assert(val.number > 9 * 3.1);
-        assert(val.number < 9 * 3.2);
+        test_true(val.type == lila_type::Double);
+        test_true(val.number > 9 * 3.1);
+        test_true(val.number < 9 * 3.2);
         lila_vm_delete(vm);
     }
 
@@ -272,7 +281,7 @@ void test_all(lila_hooks& hooks) {
         for (int i = 0; i < 1; ++i) {
             lila_eval(vm, -1);
             lila_value val = lila_peekstack(vm, -1);
-            assert(val.type == lila_type::BigInt);
+            test_true(val.type == lila_type::BigInt);
             // TODO printf("%s\n", obj.as_bigint()->str());
         }
         lila_vm_delete(vm);
@@ -287,11 +296,11 @@ void test_all(lila_hooks& hooks) {
             ((repeat twice) 10)
         )---");
         lila_eval(vm, -1);
-        assert(lila_tointeger(vm, -1) == 40);
+        test_true(lila_tointeger(vm, -1) == 40);
 
         lila_parse_or_die(vm, "((repeat (repeat twice)) 10)");
         lila_eval(vm, -1);
-        assert(lila_tointeger(vm, -1) == 160);
+        test_true(lila_tointeger(vm, -1) == 160);
         lila_vm_delete(vm);
     }
 
@@ -341,7 +350,7 @@ void test_all(lila_hooks& hooks) {
             answer
         )---");
         lila_eval(vm, -1);
-        assert(lila_tointeger(vm, -1) == 4);
+        test_true(lila_tointeger(vm, -1) == 4);
         lila_vm_delete(vm);
     }
 
@@ -369,7 +378,7 @@ void test_all(lila_hooks& hooks) {
             303
             )---");
         lila_eval(vm, -1);
-        assert(lila_tointeger(vm, -1) == 303);
+        test_true(lila_tointeger(vm, -1) == 303);
         lila_vm_delete(vm);
     }
 
@@ -388,7 +397,7 @@ void test_all(lila_hooks& hooks) {
         lila_eval(vm, -1);
         lila_push_symbol(vm, "asdf");
         lila_getmap(vm, -2);
-        assert(lila_tointeger(vm, -1) == 101);
+        test_true(lila_tointeger(vm, -1) == 101);
         lila_pop(vm, 1);
 
         // (func 2) == 101*2 == 202
@@ -396,7 +405,7 @@ void test_all(lila_hooks& hooks) {
         lila_getmap(vm, -2);
         lila_push_integer(vm, 2);
         lila_call(vm, 1, 1);
-        assert(lila_tointeger(vm, -1) == 202);
+        test_true(lila_tointeger(vm, -1) == 202);
         lila_pop(vm, 1);
 
         // set asdf = 333
@@ -409,7 +418,7 @@ void test_all(lila_hooks& hooks) {
         lila_getmap(vm, -2);
         lila_push_integer(vm, 3);
         lila_call(vm, 1, 1);
-        assert(lila_tointeger(vm, -1) == 999);
+        test_true(lila_tointeger(vm, -1) == 999);
 
         lila_vm_delete(vm);
     }

@@ -1,6 +1,10 @@
 #include "littlelambda.h"
 #include "lam_core.h"
 
+struct lila_vm : public lam_vm {};
+
+lila_hooks::~lila_hooks() {}
+
 lila_result lila_vm_import(lila_vm* vm, const char* name, const void* data, size_t len) {
     const char* next = nullptr;
     auto cur = static_cast<const char*>(data);
@@ -27,7 +31,7 @@ lila_vm* lila_vm_new(lila_hooks* hooks) {
     lila_vm* vm = new (addr) lila_vm;
     ugc_init(&vm->gc, &lam_ugc_visit, &lam_ugc_free);
     vm->gc.userdata = vm;
-    vm->hooks = hooks;
+    vm->hooks = reinterpret_cast<lam_hooks*>(hooks);
     vm->root = lam_make_env_builtin(vm);
     return vm;
 }

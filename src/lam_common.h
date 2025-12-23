@@ -24,21 +24,21 @@ extern void __debugbreak();  // Compiler Intrinsic
         lam_debugbreak();  \
     }
 
-struct lila_vm;
+struct lam_vm;
 
-enum class lila_result : int {
+enum class lam_code : int {
     Ok = 0,
     Fail = -1,
     FileNotFound = -2,
 };
 
 /// Functionality provided by external systems.
-struct lila_hooks {
-    virtual ~lila_hooks();
+struct lam_hooks {
+    virtual ~lam_hooks();
     virtual void* mem_alloc(size_t size) = 0;
     virtual void mem_free(void* addr) = 0;
     virtual void init() = 0;
     virtual void quit() = 0;
     virtual void output(const char* s, size_t n) = 0;
-    virtual lila_result import(lila_vm* vm, const char* modname) = 0;
+    virtual lam_code import(lam_vm* vm, const char* modname) = 0;
 };

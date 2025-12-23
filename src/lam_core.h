@@ -37,8 +37,8 @@ struct lam_symbol;
 struct lam_string;
 struct lam_callable;
 struct lam_bigint;
-struct lila_vm;
-struct lila_hooks;
+struct lam_vm;
+struct lam_hooks;
 
 namespace lam_Detail {
 #define Type_Traits(X)                \
@@ -229,8 +229,8 @@ struct lam_error : lam_obj {
 
 /// Environments map symbols to values.
 struct lam_env : lam_obj {
-    lila_vm* const vm;
-    lam_env(lila_vm* v);
+    lam_vm* const vm;
+    lam_env(lam_vm* v);
     void bind_multiple(const char* keys[],
                        size_t nkeys,
                        lam_value* values,
@@ -270,10 +270,10 @@ struct lam_stack : private std::vector<lam_value> {
     void pop(int n) { resize(size() - n); }
 };
 
-struct lila_vm {
+struct lam_vm {
     ugc_t gc{};
     lam_stack stack;
-    lila_hooks* hooks{};
+    lam_hooks* hooks{};
     lam_env* root{};
     std::unordered_map<std::string, lam_value> imports{};
     struct {
@@ -301,20 +301,20 @@ static inline lam_value lam_make_opaque(const void* p) {
 static inline lam_value lam_make_null() {
     return {.uval = lam_Magic::ValueConstNull};
 }
-lam_value lam_make_symbol(lila_vm* vm, const char* s, size_t n = size_t(-1));
-lam_value lam_make_string(lila_vm* vm, const char* s, size_t n = size_t(-1));
-lam_value lam_make_bigint(lila_vm* vm, int i);
-lam_value lam_make_error(lila_vm* vm, unsigned code, const char* msg);
+lam_value lam_make_symbol(lam_vm* vm, const char* s, size_t n = size_t(-1));
+lam_value lam_make_string(lam_vm* vm, const char* s, size_t n = size_t(-1));
+lam_value lam_make_bigint(lam_vm* vm, int i);
+lam_value lam_make_error(lam_vm* vm, unsigned code, const char* msg);
 
 template <typename... Args>
-static inline lam_value lam_make_list_l(lila_vm* vm, Args... args) {
+static inline lam_value lam_make_list_l(lam_vm* vm, Args... args) {
     lam_value values[] = {args...};
     return lam_make_list_v(vm, values, sizeof...(Args));
 }
 
-lam_value lam_make_list_v(lila_vm* vm, const lam_value* values, size_t N);
+lam_value lam_make_list_v(lam_vm* vm, const lam_value* values, size_t N);
 
-lam_value lam_make_env(lila_vm* vm, lam_env* parent, const char* name);
+lam_value lam_make_env(lam_vm* vm, lam_env* parent, const char* name);
 
 // If code==0, 'value' is valid, otherwise 'msg'. TODO union?
 struct lam_result {
@@ -333,14 +333,14 @@ static inline lam_value lam_make_value(lam_obj* obj) {
 // lam_value lam_eval(lam_value val, lam_env* env);
 
 /// Evaluate the given value.
-lam_value lam_eval(lila_vm* vm, lam_value val);
+lam_value lam_eval(lam_vm* vm, lam_value val);
 
 /// Print the given value.
-void lam_print(lila_vm* vm, lam_value val, const char* end = nullptr);
+void lam_print(lam_vm* vm, lam_value val, const char* end = nullptr);
 
-lam_result lam_parse(lila_vm* vm, const char* input, const char* endInput, const char** restart);
+lam_result lam_parse(lam_vm* vm, const char* input, const char* endInput, const char** restart);
 
-lam_env* lam_new_env(lila_vm* vm, lam_env* parent, const char* name);
+lam_env* lam_new_env(lam_vm* vm, lam_env* parent, const char* name);
 
 lam_value lam_eval(lam_value val, lam_env* env);
 
@@ -348,4 +348,4 @@ void lam_ugc_visit(ugc_t* gc, ugc_header_t* header);
 
 void lam_ugc_free(ugc_t* gc, ugc_header_t* gobj);
 
-lam_env* lam_make_env_builtin(lila_vm* vm);
+lam_env* lam_make_env_builtin(lam_vm* vm);
